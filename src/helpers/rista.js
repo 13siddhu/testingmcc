@@ -1,17 +1,25 @@
 const jwt = require("jsonwebtoken");
 
-const BASE_URL = process.env.RISTA_BASE_URL;
+const BASE_URL = process.env.RISTA_BASE_URL || "https://api.ristaapps.com/v1";
 console.log("[rista.js] BASE_URL on startup:", BASE_URL);
 
 /**
  * Generate JWT token for Rista API
  */
 function generateToken(isWrite = false, uniqueId = null) {
+    const apiKey = process.env.RISTA_API_KEY;
+    const secretKey = process.env.RISTA_SECRET_KEY;
+
+    if (!apiKey || !secretKey) {
+        console.error("[rista.js] CRITICAL ERROR: RISTA_API_KEY or RISTA_SECRET_KEY environment variable is missing on Vercel!");
+        throw new Error("RISTA_API_KEY and RISTA_SECRET_KEY environment variables are missing in Vercel Settings.");
+    }
+
     const now = Math.floor(Date.now() / 1000);
 
     // Rista spec payload: { iss, iat, jti (required for POST/PUT/DELETE) }
     const payload = {
-        iss: process.env.RISTA_API_KEY,
+        iss: apiKey,
         iat: now
     };
 
@@ -21,16 +29,17 @@ function generateToken(isWrite = false, uniqueId = null) {
         payload.jti = uniqueId;
     }
 
-    return jwt.sign(payload, process.env.RISTA_SECRET_KEY);
+    return jwt.sign(payload, secretKey);
 }
 
 /**
  * Common headers for Rista requests
  */
 function ristaHeaders(isWrite = false, uniqueId = null) {
+    const apiKey = process.env.RISTA_API_KEY;
     const token = generateToken(isWrite, uniqueId);
     return {
-        "x-api-key": process.env.RISTA_API_KEY,
+        "x-api-key": apiKey,
         "x-api-token": token,
         "Content-Type": "application/json"
     };
