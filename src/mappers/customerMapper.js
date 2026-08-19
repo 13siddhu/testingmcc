@@ -7,9 +7,9 @@ exports.mapShopifyToRista = (shopifyCustomer) => {
 
     return {
 
-        firstName: shopifyCustomer.first_name,
+        firstName: shopifyCustomer.first_name || shopifyCustomer.firstName || (shopifyCustomer.name ? shopifyCustomer.name.split(' ')[0] : "Coffee Lover"),
 
-        lastName: shopifyCustomer.last_name || "",
+        lastName: shopifyCustomer.last_name || shopifyCustomer.lastName || (shopifyCustomer.name && shopifyCustomer.name.split(' ').length > 1 ? shopifyCustomer.name.split(' ').slice(1).join(' ') : ""),
 
         email: shopifyCustomer.email,
 
