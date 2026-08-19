@@ -1,0 +1,292 @@
+{% comment %}
+  Rista Loyalty Points Section
+  Shows loyalty balance for the logged-in customer.
+  Fetches from GET /loyalty/:phone on the middleware.
+  Add this section to a page (e.g. /pages/loyalty) and link it
+  from the bottom nav's loyalty_link setting.
+{% endcomment %}
+
+<div class="rista-loyalty-page">
+
+  {% if customer %}
+
+    {%- assign phone = customer.phone | remove: '+' | remove: ' ' | remove: '-' -%}
+    {%- comment -%} Strip +91 country code — Rista uses 10-digit local numbers {%- endcomment -%}
+    {%- if phone.size > 10 -%}
+      {%- assign phone = phone | slice: -10, 10 -%}
+    {%- endif -%}
+
+    <div class="loyalty-header">
+      <div class="loyalty-avatar">
+        {{ customer.first_name | slice: 0 | upcase }}
+      </div>
+      <div class="loyalty-greet">
+        <div class="loyalty-name">{{ customer.first_name }} {{ customer.last_name }}</div>
+        <div class="loyalty-phone">{{ customer.phone }}</div>
+      </div>
+    </div>
+
+    <div class="loyalty-card" id="loyalty-card">
+      <div class="loyalty-loading" id="loyalty-loading">Loading your points...</div>
+      <div class="loyalty-data"  id="loyalty-data"  style="display:none">
+        <div class="loyalty-points-label">Available Points</div>
+        <div class="loyalty-points-value" id="points-value">—</div>
+        <div class="loyalty-tier"         id="loyalty-tier"></div>
+
+        <div class="loyalty-row-grid">
+          <div class="loyalty-stat">
+            <div class="loyalty-stat-val" id="reserved-points">—</div>
+            <div class="loyalty-stat-label">Reserved</div>
+          </div>
+          <div class="loyalty-stat">
+            <div class="loyalty-stat-val" id="expiry-this-month">—</div>
+            <div class="loyalty-stat-label">Expiring this month</div>
+          </div>
+          <div class="loyalty-stat">
+            <div class="loyalty-stat-val" id="expiry-next-month">—</div>
+            <div class="loyalty-stat-label">Expiring next month</div>
+          </div>
+        </div>
+      </div>
+      <div class="loyalty-error" id="loyalty-error" style="display:none">
+        Unable to load loyalty data. Make sure your account phone number is registered with us.
+      </div>
+    </div>
+
+    <div class="loyalty-how">
+      <h3>How it works</h3>
+      <div class="loyalty-step">
+        <span class="loyalty-step-icon">☕</span>
+        <div>
+          <strong>Earn points</strong>
+          <div>Every order earns you loyalty points automatically.</div>
+        </div>
+      </div>
+      <div class="loyalty-step">
+        <span class="loyalty-step-icon">🎁</span>
+        <div>
+          <strong>Redeem rewards</strong>
+          <div>Points are redeemed at checkout as a discount.</div>
+        </div>
+      </div>
+      <div class="loyalty-step">
+        <span class="loyalty-step-icon">⭐</span>
+        <div>
+          <strong>Tier benefits</strong>
+          <div>Higher tiers unlock exclusive member offers.</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    (function() {
+      const MIDDLEWARE = "https://mycoffeeco-middleware-original.onrender.com";
+      const phone = {{ phone | json }};
+      const rawPhone = {{ customer.phone | json }};
+
+      console.log("Shopify customer phone (raw):", rawPhone);
+      console.log("Phone sent to Rista (10-digit):", phone);
+
+      if (!phone || phone.length < 10) {
+        document.getElementById('loyalty-loading').style.display = 'none';
+        document.getElementById('loyalty-error').style.display = 'block';
+        document.getElementById('loyalty-error').innerHTML =
+          `No phone number found on your account. Raw: "${rawPhone}", Processed: "${phone}".<br>Please add your phone number to your account.`;
+        return;
+      }
+
+      fetch(`${MIDDLEWARE}/loyalty/${encodeURIComponent(phone)}`)
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById('loyalty-loading').style.display = 'none';
+
+          if (!data.success) {
+            document.getElementById('loyalty-error').style.display = 'block';
+            return;
+          }
+
+          const l = data.loyalty;
+          document.getElementById('points-value').textContent       = l.points ?? 0;
+          document.getElementById('reserved-points').textContent    = l.reservedPoints ?? 0;
+          document.getElementById('expiry-this-month').textContent  = l.pointsEndingThisMonth ?? 0;
+          document.getElementById('expiry-next-month').textContent  = l.pointsEndingNextMonth ?? 0;
+
+          if (l.membership) {
+            document.getElementById('loyalty-tier').textContent = `🏅 ${l.membership} Member`;
+          }
+
+          document.getElementById('loyalty-data').style.display = 'block';
+        })
+        .catch(() => {
+          document.getElementById('loyalty-loading').style.display = 'none';
+          document.getElementById('loyalty-error').style.display   = 'block';
+        });
+    })();
+    </script>
+
+  {% else %}
+
+    <div class="loyalty-login-prompt">
+      <div class="loyalty-lock">🔒</div>
+      <h2>Sign in to view your points</h2>
+      <p>Log in or create an account to track your loyalty points and rewards.</p>
+      <a href="/account/login?return_url=/pages/loyalty" class="loyalty-login-btn">Log In</a>
+      <a href="/account/register" class="loyalty-register-btn">Create Account</a>
+    </div>
+
+  {% endif %}
+
+</div>
+
+<style>
+  .rista-loyalty-page {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 80px 18px 40px; /* 80px top accounts for sticky site header */
+    font-family: inherit;
+  }
+
+  /* ── HEADER ── */
+  .loyalty-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+
+  .loyalty-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2563eb 0%, #0f1c3f 100%);
+    color: #fff;
+    font-size: 1.3rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .loyalty-name  { font-size: 1.05rem; font-weight: 700; }
+  .loyalty-phone { font-size: 0.85rem; color: #888; margin-top: 2px; }
+
+  /* ── POINTS CARD ── */
+  .loyalty-card {
+    background: linear-gradient(135deg, #2563eb 0%, #0f1c3f 100%);
+    border-radius: 20px;
+    padding: 28px 24px;
+    color: #fff;
+    margin-bottom: 28px;
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .loyalty-loading {
+    text-align: center;
+    opacity: 0.7;
+    font-size: 0.9rem;
+  }
+
+  .loyalty-points-label {
+    font-size: 0.82rem;
+    opacity: 0.75;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+
+  .loyalty-points-value {
+    font-size: 3rem;
+    font-weight: 900;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .loyalty-tier {
+    font-size: 0.85rem;
+    opacity: 0.85;
+    margin-bottom: 20px;
+  }
+
+  .loyalty-row-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    border-top: 1px solid rgba(255,255,255,0.2);
+    padding-top: 16px;
+    margin-top: 8px;
+  }
+
+  .loyalty-stat { text-align: center; }
+  .loyalty-stat-val   { font-size: 1.2rem; font-weight: 800; }
+  .loyalty-stat-label { font-size: 0.68rem; opacity: 0.7; margin-top: 2px; line-height: 1.2; }
+
+  .loyalty-error {
+    text-align: center;
+    opacity: 0.8;
+    font-size: 0.88rem;
+    line-height: 1.4;
+  }
+
+  /* ── HOW IT WORKS ── */
+  .loyalty-how h3 {
+    font-size: 1rem;
+    font-weight: 800;
+    margin: 0 0 16px;
+  }
+
+  .loyalty-step {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    font-size: 0.88rem;
+    line-height: 1.4;
+    color: #444;
+  }
+
+  .loyalty-step-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .loyalty-step strong { display: block; font-weight: 700; color: #1a1a1a; margin-bottom: 2px; }
+
+  /* ── LOGIN PROMPT ── */
+  .loyalty-login-prompt {
+    text-align: center;
+    padding: 60px 20px;
+  }
+
+  .loyalty-lock    { font-size: 2.5rem; margin-bottom: 16px; }
+  .loyalty-login-prompt h2 { font-size: 1.2rem; font-weight: 800; margin-bottom: 8px; }
+  .loyalty-login-prompt p  { color: #888; font-size: 0.9rem; margin-bottom: 24px; }
+
+  .loyalty-login-btn,
+  .loyalty-register-btn {
+    display: block;
+    padding: 14px;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 1rem;
+    text-decoration: none;
+    margin-bottom: 10px;
+  }
+
+  .loyalty-login-btn     { background: #1a1a1a; color: #fff; }
+  .loyalty-register-btn  { background: #f5f5f7; color: #1a1a1a; border: 1px solid #ddd; }
+</style>
+
+{% schema %}
+{
+  "name": "Rista Loyalty Points",
+  "settings": [],
+  "presets": [
+    { "name": "Rista Loyalty Points" }
+  ]
+}
+{% endschema %}

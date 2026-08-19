@@ -1,0 +1,2173 @@
+{% comment %}
+  Prevent search engines from indexing this ordering page.
+  The online ordering UI is an app-like experience not meant for SEO.
+{% endcomment %}
+<meta name="robots" content="noindex, nofollow">
+
+{% comment %}
+  ══════════════════════════════════════════════════════════════
+  REFERRAL TRACKING SCRIPT
+  Captures referral codes from URL (?ref=CODE) and stores them
+  for order attribution. Injected directly here since theme.liquid
+  is not accessible in this Shopify setup.
+  ══════════════════════════════════════════════════════════════
+{% endcomment %}
+<script>
+(function() {
+  'use strict';
+  console.log('[Referral] Script loaded and running');
+
+  const ReferralTracker = {
+    STORAGE_KEY: 'mcc_referral_code',
+    EXPIRY_KEY: 'mcc_referral_expiry',
+    EXPIRY_DAYS: 30,
+    
+    init() {
+      console.log('[Referral] Initializing tracker');
+      this.captureReferralFromURL();
+      this.displayReferralBanner();
+    },
+    
+    captureReferralFromURL() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const ref = urlParams.get('ref') || urlParams.get('referral') || urlParams.get('code');
+      
+      console.log('[Referral] Checking URL params. Found ref:', ref);
+      
+      if (ref) {
+        this.validateAndStore(ref);
+      } else {
+        // Check if we already have a stored code
+        const storedCode = this.getReferralCode();
+        if (storedCode) {
+          console.log('[Referral] Using stored code:', storedCode);
+        } else {
+          console.log('[Referral] No referral code found in URL or storage');
+        }
+      }
+    },
+    
+    async validateAndStore(code) {
+      console.log('[Referral] Validating code:', code);
+      try {
+        const response = await fetch(`https://mycoffeeco-middleware-original.onrender.com/api/referrals/validate/${code}`);
+        const data = await response.json();
+        
+        console.log('[Referral] Validation response:', data);
+        
+        if (data.success && data.valid) {
+          localStorage.setItem(this.STORAGE_KEY, code.toUpperCase());
+          
+          const expiryDate = new Date();
+          expiryDate.setDate(expiryDate.getDate() + this.EXPIRY_DAYS);
+          localStorage.setItem(this.EXPIRY_KEY, expiryDate.toISOString());
+          
+          console.log('[Referral] Code stored successfully:', code, 'Type:', data.referral.type);
+          
+          this.showBanner(`🎉 You're ordering via ${data.referral.name}'s link!`, 'success');
+          this.cleanURL();
+        } else {
+          console.warn('[Referral] Invalid code:', code);
+        }
+      } catch (err) {
+        console.error('[Referral] Validation failed:', err);
+      }
+    },
+    
+    getReferralCode() {
+      const code = localStorage.getItem(this.STORAGE_KEY);
+      const expiry = localStorage.getItem(this.EXPIRY_KEY);
+      
+      if (!code || !expiry) return null;
+      
+      if (new Date(expiry) < new Date()) {
+        this.clearReferral();
+        return null;
+      }
+      
+      return code;
+    },
+    
+    clearReferral() {
+      localStorage.removeItem(this.STORAGE_KEY);
+      localStorage.removeItem(this.EXPIRY_KEY);
+    },
+    
+    displayReferralBanner() {
+      const code = this.getReferralCode();
+      if (!code) return;
+      
+      const existingBanner = document.getElementById('referral-banner');
+      if (existingBanner) return;
+      
+      this.showBanner(`🎁 Referral code <strong>${code}</strong> applied!`, 'info', true);
+    },
+    
+    showBanner(message, type = 'info', persistent = false) {
+      const banner = document.createElement('div');
+      banner.id = 'referral-banner';
+      banner.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: ${type === 'success' ? '#10b981' : '#3b82f6'};
+        color: white;
+        padding: 12px 16px;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 500;
+        z-index: 99999;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      `;
+      banner.innerHTML = message;
+      
+      document.body.prepend(banner);
+      
+      if (!persistent) {
+        setTimeout(() => banner.remove(), 5000);
+      }
+    },
+    
+    cleanURL() {
+      if (!window.history.replaceState) return;
+      
+      const url = new URL(window.location.href);
+      url.searchParams.delete('ref');
+      url.searchParams.delete('referral');
+      url.searchParams.delete('code');
+      
+      window.history.replaceState({}, document.title, url.toString());
+    }
+  };
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => ReferralTracker.init());
+  } else {
+    ReferralTracker.init();
+  }
+  
+  window.ReferralTracker = ReferralTracker;
+  
+})();
+</script>
+
+{% comment %}
+  Rista Online Ordering Section — redesigned to match the "MY COFFEE CO." app
+  mockups (MCC_online_ordering.pdf):
+    1) Home — light header (Deliver to / greeting / logo), search bar,
+       promo carousel, then one horizontal-scroll row PER Rista category
+       ("Popular Picks" style), an info strip, bottom nav.
+    2) Categories — solid blue header (bell / MY COFFEE CO. + tagline / cart),
+       white rounded sheet, 3-col category tiles with circular arrow buttons.
+    3) Category detail — blue header with back arrow, 2-col item grid for a
+       single category (used by "View All" and by tapping a category tile).
+    4) Loyalty Points — blue header, gradient points card, "How to Earn" card.
+    5) Cart — blue header with back arrow, pickup/change bar, cart items,
+       "Make it even better" upsell row, bill summary, checkout.
+    6) My Account — blue header with back arrow, profile card, settings list.
+
+  Views are swapped client-side (no page reloads) inside .rista-app. Menu
+  data still comes from Rista via the middleware; checkout still adds the
+  matching SKUs to the Shopify cart, unchanged from the previous version.
+
+  NOTE on the "My Account" screen: the 5 mockup screens only show Home /
+  Categories / Offer / Loyalty Points / Cart in the bottom nav — there's no
+  6th tab for Account. A small avatar button was added next to the bell icon
+  (top-right of the light + blue headers) as the entry point into Account,
+  since the source mockups don't show where that screen is normally opened
+  from. Adjust/remove #account-entry if you have a different entry point.
+
+  FIX NOTES (page-shift / search bar cut off on the right):
+  The page was drifting horizontally because (a) html/body allowed
+  horizontal scroll, (b) .rista-app used overflow-x: clip instead of
+  hidden, (c) some flex children (search input, greeting copy) had no
+  min-width: 0 so they refused to shrink, and (d) touch swipes on the
+  inner horizontal-scroll rows were bleeding into page-level horizontal
+  scroll. All four are fixed below (search this file for "FIX:").
+{% endcomment %}
+
+{%- if request.path == '/account' or request.path == '/account/' -%}
+  {%- if section.settings.custom_order_page_link != blank -%}
+    <script>window.location.href = "{{ section.settings.custom_order_page_link }}?view=account";</script>
+  {%- endif -%}
+{%- endif -%}
+
+<div class="rista-app" id="rista-app">
+
+  {%- comment -%} ══════════════ HOME VIEW ══════════════ {%- endcomment -%}
+  <div class="rista-view" id="view-home" data-view="home">
+
+    <div class="rista-home-header">
+      <div class="rista-home-toprow">
+        <div class="rista-loc-group">
+          <!-- Order Type (Channel) Pill -->
+          <div class="rista-loc-pill" id="home-channel-part">
+            <span class="rista-channel-icon" id="home-channel-icon">🛍️</span>
+            <span class="rista-channel-value" id="home-channel-label">Website</span>
+            <span class="chevron">⌄</span>
+            <select id="channel-select" class="rista-hidden-select" aria-label="Choose order type">
+              <option value="Website">Website</option>
+              <option value="Takeaway">Takeaway</option>
+              <option value="Dine In">Dine In</option>
+              <option value="Delivery">Delivery</option>
+            </select>
+          </div>
+
+          <!-- Location (Branch) Pill -->
+          <div class="rista-loc-pill" id="home-branch-part">
+            <span class="rista-loc-pin">📍</span>
+            <span class="rista-loc-value" id="home-branch-label">Loading…</span>
+            <span class="chevron">⌄</span>
+            <select id="branch-select" class="rista-hidden-select" aria-label="Choose location">
+              <option value="HO"  data-channels="Website,Delivery,Dine In,Takeaway">Head Office — Sushant Lok</option>
+              <option value="DB1" data-channels="Website,Dine In,Takeaway">DLF Building 14</option>
+              <option value="DB6" data-channels="Website,Dine In,Takeaway">DLF Building 6</option>
+              <option value="IFT" data-channels="Website,Dine In,Takeaway">AIPL — Sector 62</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="rista-header-icons">
+          <button class="rista-icon-btn" id="account-entry" type="button" aria-label="My account">
+            <span class="rista-avatar-mini">{% if customer and customer.first_name %}{{ customer.first_name | slice: 0 | upcase }}{% else %}👤{% endif %}</span>
+          </button>
+          <button class="rista-icon-btn" id="notif-bell" type="button" aria-label="Notifications">
+            🔔<span class="rista-bell-dot"></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="rista-greet-row">
+        <div class="rista-greet-copy">
+          <p class="rista-greet-line">{{ section.settings.greeting_text | default: "Good Morning!" }} ☀️</p>
+          <h1 class="rista-greet-headline">
+            {{ section.settings.headline_line1 | default: "Your perfect coffee," }}<br>
+            <span class="rista-accent">{{ section.settings.headline_line2 | default: "just a tap away." }}</span>
+          </h1>
+        </div>
+        {%- if section.settings.logo != blank -%}
+          <img class="rista-header-logo" src="{{ section.settings.logo | image_url: width: 200 }}" alt="{{ shop.name }}" loading="lazy">
+        {%- else -%}
+          <div class="rista-header-logo-fallback">
+            <span class="rista-logo-mark">☕</span>
+            <span class="rista-logo-word">MY<br>COFFEE<br>CO.</span>
+          </div>
+        {%- endif -%}
+      </div>
+
+      <div class="rista-search-row">
+        <span class="rista-search-icon">🔍</span>
+        <input id="menu-search" class="rista-search-input" type="search"
+               placeholder="{{ section.settings.search_placeholder | default: 'Search for coffee, drinks or food...' }}"
+               autocomplete="off">
+        <button class="rista-search-filter" id="open-categories-btn" type="button" aria-label="Browse categories">☰</button>
+      </div>
+    </div>
+
+    {%- comment -%} ── PROMO CAROUSEL ── {%- endcomment -%}
+    {%- assign promo_blocks = section.blocks | where: "type", "promo" -%}
+    {%- if promo_blocks.size > 0 -%}
+    <div class="rista-promo-wrap">
+      <div class="rista-promo-track" id="promo-track">
+        {%- for block in promo_blocks -%}
+        <div class="rista-promo-slide" {{ block.shopify_attributes }}
+             style="background: linear-gradient(135deg, {{ block.settings.bg_start | default: '#0a06ff' }} 0%, {{ block.settings.bg_end | default: '#3a37ff' }} 100%);">
+          <div class="rista-promo-copy">
+            {%- if block.settings.heading != blank -%}<div class="rista-promo-heading">{{ block.settings.heading }}</div>{%- endif -%}
+            {%- if block.settings.script_text != blank -%}<div class="rista-promo-script">{{ block.settings.script_text }}</div>{%- endif -%}
+            {%- if block.settings.subtext != blank -%}<p class="rista-promo-sub">{{ block.settings.subtext }}</p>{%- endif -%}
+            {%- if block.settings.cta_text != blank -%}
+              <a class="rista-promo-cta" href="{{ block.settings.cta_link | default: '#' }}">{{ block.settings.cta_text }} →</a>
+            {%- endif -%}
+          </div>
+          {%- if block.settings.image != blank -%}
+            <img class="rista-promo-img" src="{{ block.settings.image | image_url: width: 400 }}" alt="" loading="lazy">
+          {%- endif -%}
+          {%- if block.settings.price_badge != blank -%}
+            <div class="rista-promo-badge">{{ block.settings.price_badge }}</div>
+          {%- endif -%}
+        </div>
+        {%- endfor -%}
+      </div>
+      <div class="rista-promo-dots" id="promo-dots">
+        {%- for block in promo_blocks -%}<span class="rista-dot" data-i="{{ forloop.index0 }}"></span>{%- endfor -%}
+      </div>
+    </div>
+    {%- endif -%}
+
+    {%- comment -%} ── PER-CATEGORY ROWS (populated by JS from Rista data) ── {%- endcomment -%}
+    <div id="menu-loading" class="rista-state">Loading menu...</div>
+    <div id="menu-error"   class="rista-state" style="display:none">Unable to load menu. Please try again.</div>
+    <div id="home-rows"></div>
+
+    <div class="rista-info-strip">
+      <div class="rista-info-item"><span>⏱️</span>Ready in 3–5 mins</div>
+      <div class="rista-info-item"><span>🛍️</span>Pickup from nearest kiosk</div>
+      <div class="rista-info-item"><span>🌿</span>Freshly made just for you</div>
+    </div>
+  </div>
+
+  {%- comment -%} ══════════════ CATEGORIES VIEW ══════════════ {%- endcomment -%}
+  <div class="rista-view rista-view-blue" id="view-categories" data-view="categories" style="display:none">
+    <div class="rista-blue-header">
+      <button class="rista-icon-btn light" id="account-entry-2" type="button" aria-label="My account">
+        <span class="rista-avatar-mini">{% if customer and customer.first_name %}{{ customer.first_name | slice: 0 | upcase }}{% else %}👤{% endif %}</span>
+      </button>
+      <div class="rista-blue-header-title">
+        <span class="rista-blue-tagline">{{ section.settings.brand_tagline | default: "Small Sips. Big Moments." | upcase }}</span>
+      </div>
+      <button class="rista-icon-btn light" id="cart-icon-cat" type="button" aria-label="Cart">
+        🛒<span class="rista-nav-badge" id="cart-badge-cat" style="display:none">0</span>
+      </button>
+    </div>
+    <div class="rista-sheet">
+      <h1 class="rista-page-title">Categories<span class="rista-title-underline"></span></h1>
+      <div class="rista-cat-grid3" id="categories-grid"></div>
+      <div class="rista-info-strip">
+        <div class="rista-info-item"><span>⭐</span>Earn 7 Points<br><small>on every ₹100 spent</small></div>
+        <div class="rista-info-item"><span>☕</span>Brewed Fresh<br><small>just for you</small></div>
+        <div class="rista-info-item"><span>🛡️</span>Great Quality<br><small>Every Time</small></div>
+      </div>
+    </div>
+  </div>
+
+  {%- comment -%} ══════════════ CATEGORY DETAIL VIEW ══════════════ {%- endcomment -%}
+  <div class="rista-view rista-view-blue" id="view-detail" data-view="detail" style="display:none">
+    <div class="rista-blue-header">
+      <button class="rista-icon-btn light" id="detail-back" type="button" aria-label="Back">←</button>
+      <div class="rista-blue-header-title">
+        <span class="rista-blue-brand" id="detail-title">Category</span>
+        <span class="rista-blue-tagline">{{ section.settings.brand_tagline | default: "Small Sips. Big Moments." | upcase }}</span>
+      </div>
+      <button class="rista-icon-btn light" id="cart-icon-detail" type="button" aria-label="Cart">
+        🛒<span class="rista-nav-badge" id="cart-badge-detail" style="display:none">0</span>
+      </button>
+    </div>
+    <div class="rista-sheet">
+      <div id="search-empty" class="rista-state" style="display:none">No items match your search.</div>
+      <div class="rista-menu-grid" id="detail-grid"></div>
+    </div>
+  </div>
+
+  {%- comment -%} ══════════════ LOYALTY VIEW ══════════════ {%- endcomment -%}
+  <div class="rista-view rista-view-blue" id="view-loyalty" data-view="loyalty" style="display:none">
+    <div class="rista-blue-header">
+      <button class="rista-icon-btn light" id="account-entry-3" type="button" aria-label="My account">
+        <span class="rista-avatar-mini">{% if customer and customer.first_name %}{{ customer.first_name | slice: 0 | upcase }}{% else %}👤{% endif %}</span>
+      </button>
+      <div class="rista-blue-header-title">
+        <span class="rista-blue-tagline">{{ section.settings.brand_tagline | default: "Small Sips. Big Moments." | upcase }}</span>
+      </div>
+      <button class="rista-icon-btn light" id="cart-icon-loy" type="button" aria-label="Cart">
+        🛒<span class="rista-nav-badge" id="cart-badge-loy" style="display:none">0</span>
+      </button>
+    </div>
+    <div class="rista-sheet">
+      <h1 class="rista-page-title">Loyalty Points<span class="rista-title-underline"></span></h1>
+
+      <div class="rista-points-card">
+        <div class="rista-points-top">
+          <p class="rista-points-label">Available Points</p>
+          <p class="rista-points-num">{{ section.settings.loyalty_points_default | default: 0 }}</p>
+          <p class="rista-points-suffix">Points</p>
+        </div>
+        <div class="rista-points-bottom">
+          <span>⭐</span> {{ section.settings.points_per_100 | default: 7 }} Points = ₹100 Spent
+        </div>
+      </div>
+
+      <div class="rista-earn-card">
+        <h3>How to Earn</h3>
+        <div class="rista-earn-row">
+          <span class="rista-earn-icon">⭐</span>
+          <p>You earn <strong>{{ section.settings.points_per_100 | default: 7 }} points</strong> for every ₹100 spent.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {%- comment -%} ══════════════ CART VIEW ══════════════ {%- endcomment -%}
+  <div class="rista-view rista-view-blue" id="view-cart" data-view="cart" style="display:none">
+    <div class="rista-blue-header">
+      <button class="rista-icon-btn light" id="cart-back" type="button" aria-label="Back">←</button>
+      <div class="rista-blue-header-title">
+        <span class="rista-blue-tagline">{{ section.settings.brand_tagline | default: "Small Sips. Big Moments." | upcase }}</span>
+      </div>
+      <button class="rista-icon-btn light" id="cart-icon-self" type="button" aria-label="Cart">
+        🛒<span class="rista-nav-badge" id="cart-badge-self" style="display:none">0</span>
+      </button>
+    </div>
+    <div class="rista-sheet">
+      <h1 class="rista-page-title">Your Cart<span class="rista-title-underline"></span></h1>
+
+      <div class="rista-pickup-bar">
+        <span class="rista-pickup-icon">🛍️</span>
+        <div class="rista-pickup-copy">
+          <strong id="pickup-channel-label">Pickup Order</strong>
+          <span>Ready in 3–5 mins <span id="pickup-branch-label"></span></span>
+        </div>
+        <span class="rista-pickup-change-wrap">
+          <button class="rista-pickup-change" id="pickup-change-btn" type="button">Change ›</button>
+          <select id="branch-select-cart" class="rista-hidden-select" aria-label="Choose location"></select>
+        </span>
+        <select id="channel-select-cart" class="rista-hidden-select" aria-label="Choose order type" style="display:none">
+          <option value="Website">Website</option>
+          <option value="Takeaway">Takeaway</option>
+          <option value="Dine In">Dine In</option>
+          <option value="Delivery">Delivery</option>
+        </select>
+      </div>
+
+      <div class="rista-cart-items" id="cart-items-list">
+        <p class="rista-cart-empty">Your cart is empty</p>
+      </div>
+
+      <div class="rista-upsell" id="upsell-wrap" style="display:none">
+        <p class="rista-upsell-title">Make it even better ✨</p>
+        <p class="rista-upsell-sub">Add these to complete your order</p>
+        <div class="rista-scroll-row" id="upsell-row"></div>
+      </div>
+
+      <div class="rista-bill-card" id="cart-footer" style="display:none">
+        <p class="rista-bill-title">Bill Summary</p>
+        <div class="rista-bill-row"><span>Item Total</span><span id="cart-subtotal">₹0</span></div>
+        <div class="rista-bill-row rista-bill-tax-row"><span>GST (5%)</span><span id="cart-tax-included">₹0</span></div>
+        <div class="rista-bill-row rista-bill-total"><span>To Pay</span><span id="cart-total">₹0</span></div>
+        <small class="rista-bill-tax">(+ 5% GST on all items)</small>
+        <button class="rista-checkout-btn" id="checkout-btn">Proceed to Checkout →</button>
+        <p class="rista-secure-note">🔒 Secure payments. 100% safe.</p>
+      </div>
+
+      <div class="rista-info-strip">
+        <div class="rista-info-item"><span>⭐</span>Earn {{ section.settings.points_per_100 | default: 7 }} Points<br><small>on this order</small></div>
+        <div class="rista-info-item"><span>☕</span>Brewed Fresh<br><small>just for you</small></div>
+        <div class="rista-info-item"><span>🛡️</span>Great Coffee<br><small>Every Time</small></div>
+      </div>
+    </div>
+  </div>
+
+  {%- comment -%} ══════════════ ACCOUNT VIEW ══════════════ {%- endcomment -%}
+  <div class="rista-view rista-view-blue" id="view-account" data-view="account" style="display:none">
+    <div class="rista-blue-header">
+      <button class="rista-icon-btn light" id="account-back" type="button" aria-label="Back">←</button>
+      <div class="rista-blue-header-title">
+        <span class="rista-blue-brand">My Account</span>
+        <span class="rista-blue-tagline">{{ section.settings.brand_tagline | default: "Small Sips. Big Moments." | upcase }}</span>
+      </div>
+      <button class="rista-icon-btn light" id="cart-icon-acc" type="button" aria-label="Cart">
+        🛒<span class="rista-nav-badge" id="cart-badge-acc" style="display:none">0</span>
+      </button>
+    </div>
+    <div class="rista-sheet" style="padding-top:16px;">
+      {% if customer %}
+        <div class="rista-profile-card">
+          <div class="rista-profile-avatar">{% if customer.first_name %}{{ customer.first_name | slice: 0 | upcase }}{% else %}👤{% endif %}</div>
+          <div class="rista-profile-copy">
+            <p class="rista-profile-name">{{ customer.name }}</p>
+            <p class="rista-profile-phone">{% if customer.phone %}{{ customer.phone }}{% else %}{{ customer.email }}{% endif %}</p>
+            <button class="rista-edit-profile-btn" id="edit-profile-trigger-btn" type="button">✎ Edit Profile</button>
+          </div>
+        </div>
+
+        <div class="rista-account-list">
+          <button class="rista-account-row" type="button" id="account-info-trigger-btn">
+            <span class="rista-account-icon">👤</span>
+            <span class="rista-account-copy"><strong>Account Details</strong><small>Manage your personal information</small></span>
+            <span class="rista-account-chevron">›</span>
+          </button>
+          <a class="rista-account-row" href="{{ section.settings.orders_page_link | default: '/account' }}">
+            <span class="rista-account-icon">🛍️</span>
+            <span class="rista-account-copy"><strong>My Orders</strong><small>View your past and upcoming orders</small></span>
+            <span class="rista-account-chevron">›</span>
+          </a>
+          <button class="rista-account-row" type="button" id="account-loyalty-link">
+            <span class="rista-account-icon">⭐</span>
+            <span class="rista-account-copy"><strong>Loyalty Points</strong><small>Check your points and rewards</small></span>
+            <span class="rista-account-chevron">›</span>
+          </button>
+          <a class="rista-account-row" href="{{ section.settings.feedback_link | default: '#' }}">
+            <span class="rista-account-icon">💬</span>
+            <span class="rista-account-copy"><strong>Feedback</strong><small>Share your feedback with us</small></span>
+            <span class="rista-account-chevron">›</span>
+          </a>
+          <a class="rista-account-row" href="{{ section.settings.support_link | default: '#' }}">
+            <span class="rista-account-icon">🎧</span>
+            <span class="rista-account-copy"><strong>Help &amp; Support</strong><small>Get help and answers</small></span>
+            <span class="rista-account-chevron">›</span>
+          </a>
+          <a class="rista-account-row" href="{{ routes.account_logout_url | default: '/account/logout' }}">
+            <span class="rista-account-icon">↪</span>
+            <span class="rista-account-copy"><strong>Logout</strong><small>Sign out of your account</small></span>
+            <span class="rista-account-chevron">›</span>
+          </a>
+          <a class="rista-account-row danger" href="{{ section.settings.delete_account_link | default: '#' }}">
+            <span class="rista-account-icon">🗑️</span>
+            <span class="rista-account-copy"><strong>Delete Account</strong><small>Permanently delete your account</small></span>
+            <span class="rista-account-chevron">›</span>
+          </a>
+        </div>
+      {% else %}
+        <div class="mcc-login-card">
+          <div class="mcc-login-hero">
+            <div class="mcc-login-avatar">🔑</div>
+            <h2 class="mcc-login-title">Sign In to Your Account</h2>
+            <p class="mcc-login-sub">Log in to view your profile, manage orders, and redeem loyalty points.</p>
+          </div>
+
+          <a href="{{ routes.account_login_url | default: '/account/login' }}?return_to={{ request.path | url_encode }}%3Fview%3Daccount" class="mcc-save-profile-btn" style="display:flex;align-items:center;justify-content:center;text-decoration:none;margin-top:14px;">
+            Sign In / Log In →
+          </a>
+
+          <div class="mcc-login-footer" style="margin-top:18px;">
+            <p>Don't have an account? <a href="/account/register" class="mcc-login-link">Create Account</a></p>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {%- comment -%} ══════════════ EDIT PROFILE VIEW ══════════════ {%- endcomment -%}
+  <div class="rista-view rista-view-blue" id="view-edit-profile" data-view="edit-profile" style="display:none">
+    <div class="mcc-edit-topbar">
+      <button class="rista-icon-btn" id="edit-profile-back" type="button" aria-label="Back">←</button>
+      <span class="mcc-edit-topbar-title">Edit Profile</span>
+      <span style="width:32px"></span>
+    </div>
+    <div class="rista-sheet">
+      <div class="mcc-edit-avatar-container">
+        <div class="mcc-avatar-wrapper">
+          <div class="mcc-avatar-circle" id="profile-avatar-circle">
+            {% if customer and customer.first_name %}{{ customer.first_name | slice: 0 | upcase }}{% else %}🙂{% endif %}
+          </div>
+          <button class="mcc-camera-badge" type="button" id="change-avatar-btn" aria-label="Change photo">📷</button>
+          <input type="file" id="avatar-file-input" accept="image/*" style="display:none">
+        </div>
+      </div>
+
+      <form id="edit-profile-form" class="mcc-profile-form">
+        <div class="mcc-form-field">
+          <label for="profile-name-input">Name</label>
+          <input id="profile-name-input" type="text" value="{% if customer %}{{ customer.name | escape }}{% endif %}" placeholder="Enter your name">
+        </div>
+
+        <div class="mcc-form-field">
+          <label for="profile-phone-input">Mobile Number</label>
+          <div class="mcc-phone-input-row">
+            <div class="mcc-country-picker">
+              <span>🇮🇳 +91</span>
+              <span class="chevron">⌄</span>
+            </div>
+            <input id="profile-phone-input" type="tel" value="{% if customer and customer.phone %}{{ customer.phone | remove_first: '+91' | escape }}{% endif %}" placeholder="Mobile number">
+          </div>
+        </div>
+
+        <div class="mcc-form-field">
+          <label for="profile-email-input">Email</label>
+          <input id="profile-email-input" type="email" value="{% if customer %}{{ customer.email | escape }}{% endif %}" placeholder="Email address">
+        </div>
+
+        <div class="mcc-form-field">
+          <label for="profile-dob-input">Date Of Birth</label>
+          <div class="mcc-date-input-wrap">
+            <input id="profile-dob-input" type="date" value="{{ customer.metafields.custom.dob }}">
+            <span class="mcc-calendar-icon">📅</span>
+          </div>
+        </div>
+
+        <div class="mcc-form-field">
+          <label for="profile-gender-select">Gender</label>
+          <div class="mcc-select-wrap">
+            <select id="profile-gender-select">
+              <option value="">Select Gender</option>
+              <option value="Female" {% if customer and customer.metafields.custom.gender == 'Female' %}selected{% endif %}>Female</option>
+              <option value="Male" {% if customer and customer.metafields.custom.gender == 'Male' %}selected{% endif %}>Male</option>
+              <option value="Other" {% if customer and customer.metafields.custom.gender == 'Other' %}selected{% endif %}>Other</option>
+            </select>
+            <span class="chevron">⌄</span>
+          </div>
+        </div>
+
+        <div class="mcc-form-field">
+          <label for="profile-nationality-input">Nationality</label>
+          <input id="profile-nationality-input" type="text" value="{{ customer.metafields.custom.nationality | default: 'Indian' }}" placeholder="Nationality">
+        </div>
+
+        <button class="mcc-save-profile-btn" id="save-profile-btn" type="submit">Save</button>
+      </form>
+    </div>
+  </div>
+
+  {%- comment -%} ── BOTTOM TAB BAR (persists across all views) ── {%- endcomment -%}
+  <div class="rista-bottom-nav">
+    <button class="rista-nav-item" data-nav="home" id="nav-home" type="button">
+      <span class="rista-nav-icon">🏠</span><span>Home</span>
+    </button>
+    <button class="rista-nav-item" data-nav="categories" id="nav-category" type="button">
+      <span class="rista-nav-icon">▤</span><span>Categories</span>
+    </button>
+    <a class="rista-nav-fab" id="nav-offer" href="{{ section.settings.offers_link | default: '#' }}">
+      <span>🏷️</span>
+    </a>
+    <button class="rista-nav-item" data-nav="loyalty" id="nav-loyalty" type="button">
+      <span class="rista-nav-icon">⭐</span><span>Loyalty Points</span>
+    </button>
+    <button class="rista-nav-item" data-nav="cart" id="nav-cart-btn" type="button">
+      <span class="rista-nav-icon">🛒<span class="rista-nav-badge" id="nav-cart-badge" style="display:none">0</span></span>
+      <span>Cart</span>
+    </button>
+  </div>
+
+</div>
+
+<style>
+  /* FIX: stop the whole document from ever scrolling sideways */
+  html, body {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  .rista-app, .rista-app *, .rista-app *::before, .rista-app *::after {
+    box-sizing: border-box !important;
+  }
+  .rista-app {
+    direction: ltr;
+    --rista-blue: #0a06ff;
+    --rista-blue-light: #4d49ff;
+    --rista-blue-dark: #05031a;
+    --rista-blue-tile: #e8e7ff;
+    --rista-bg: #f5f5f7;
+    --rista-text: #12142B;
+    --rista-accent: #e53e3e;
+    width: 100% !important;
+    max-width: 480px !important;
+    margin: 0 auto !important;
+    background: var(--rista-bg);
+    color: var(--rista-text);
+    font-family: inherit;
+    position: relative;
+    min-height: 100vh;
+    padding-bottom: 84px;
+    overflow-x: hidden !important;
+    touch-action: manipulation;
+    padding-top: var(--rista-header-offset, 0px);
+  }
+  @media (min-width: 481px) {
+    .rista-app {
+      border-left: 1px solid #eee;
+      border-right: 1px solid #eee;
+      box-shadow: 0 0 40px rgba(0,0,0,0.06);
+    }
+  }
+  .rista-app button { font-family: inherit; }
+  .rista-hidden-select { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+
+  /* ── HOME HEADER (light) ── */
+  .rista-home-header { background: var(--rista-bg); padding: 14px; box-sizing: border-box; width: 100%; max-width: 100%; }
+  .rista-home-toprow { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; max-width: 100%; min-width: 0; }
+  .rista-loc-group { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  .rista-loc-pill {
+    display: flex; align-items: center; gap: 5px; background: #fff; border: 1px solid #e2e8f0;
+    border-radius: 20px; padding: 6px 10px; position: relative; min-width: 0; cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04); flex-shrink: 1;
+  }
+  .rista-loc-pill:hover { border-color: var(--rista-blue); }
+  .rista-channel-icon, .rista-loc-pin { font-size: 0.85rem; flex-shrink: 0; }
+  .rista-channel-value, .rista-loc-value {
+    font-weight: 700; font-size: 0.76rem; color: var(--rista-text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px;
+  }
+  .rista-loc-pill .chevron { font-size: 0.65rem; color: #888; margin-left: 2px; flex-shrink: 0; }
+
+  .rista-header-icons { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .rista-icon-btn {
+    background: #fff; border: 1px solid #eee; border-radius: 50%;
+    width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; cursor: pointer; position: relative; flex-shrink: 0;
+  }
+  .rista-icon-btn.light { background: rgba(255,255,255,0.15); border: none; color: #fff; }
+  .rista-avatar-mini {
+    width: 26px; height: 26px; border-radius: 50%; background: var(--rista-blue);
+    color: #fff; font-weight: 700; font-size: 0.75rem; display: flex; align-items: center; justify-content: center;
+  }
+  .rista-bell-dot { position: absolute; top: 6px; right: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--rista-blue); border: 1.5px solid #fff; }
+
+  .rista-greet-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 18px 0 16px; min-width: 0; width: 100%; max-width: 100%; }
+  .rista-greet-copy { min-width: 0; flex: 1; }
+  .rista-greet-line { font-size: 0.92rem; color: #444; margin: 0 0 4px; }
+  .rista-greet-headline { font-size: 1.35rem; font-weight: 800; line-height: 1.25; margin: 0; }
+  .rista-accent { color: var(--rista-blue); }
+  .rista-header-logo { max-width: 100px; height: auto; flex-shrink: 0; }
+  .rista-header-logo-fallback { text-align: center; flex-shrink: 0; color: var(--rista-blue); }
+  .rista-logo-mark { font-size: 1.6rem; display: block; }
+  .rista-logo-word { font-size: 0.62rem; font-weight: 800; line-height: 1.1; letter-spacing: 0.03em; }
+
+  .rista-search-row {
+    background: #fff; border: 1px solid #eee; border-radius: 14px; padding: 12px 14px;
+    display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box;
+  }
+  .rista-search-icon { font-size: 0.95rem; opacity: 0.5; flex-shrink: 0; }
+  .rista-search-input {
+    border: none; outline: none; flex: 1; width: 0; min-width: 0; font-size: 0.92rem; color: #1a1a1a; background: transparent;
+    -webkit-appearance: none; appearance: none; box-sizing: border-box;
+  }
+  .rista-search-input::placeholder { color: #aaa; }
+  input[type="search"]::-webkit-search-decoration,
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-results-button,
+  input[type="search"]::-webkit-search-results-decoration { display: none; }
+  .rista-search-filter { border: none; background: none; font-size: 1rem; opacity: 0.6; cursor: pointer; flex-shrink: 0; }
+
+  /* ── PROMO CAROUSEL ── */
+  .rista-promo-wrap { padding: 18px 18px 4px; width: 100%; max-width: 100%; box-sizing: border-box; }
+  .rista-promo-track {
+    display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none; border-radius: 18px;
+    touch-action: pan-x; width: 100%; max-width: 100%; box-sizing: border-box;
+  }
+  .rista-promo-track::-webkit-scrollbar { display: none; }
+  .rista-promo-slide {
+    position: relative; flex: 0 0 100%; scroll-snap-align: start; border-radius: 18px;
+    padding: 22px 20px; min-height: 190px; overflow: hidden; color: #fff; display: flex; align-items: center; box-sizing: border-box;
+  }
+  .rista-promo-copy { position: relative; z-index: 2; max-width: 60%; }
+  .rista-promo-heading { font-size: 1.3rem; font-weight: 800; line-height: 1.2; }
+  .rista-promo-script { font-family: Georgia, serif; font-style: italic; font-size: 1.25rem; margin-bottom: 6px; }
+  .rista-promo-sub { font-size: 0.82rem; opacity: 0.92; margin: 0 0 14px; }
+  .rista-promo-cta {
+    display: inline-block; background: #fff; color: var(--rista-blue); font-weight: 800; font-size: 0.8rem;
+    padding: 9px 16px; border-radius: 20px; text-decoration: none;
+  }
+  .rista-promo-img { position: absolute; right: -10px; bottom: -10px; width: 46%; object-fit: contain; }
+  .rista-promo-badge {
+    position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.15); border: 2px solid #fff;
+    color: #fff; border-radius: 50%; width: 68px; height: 68px; display: flex; align-items: center; justify-content: center;
+    font-size: 0.62rem; font-weight: 800; text-align: center; line-height: 1.15; padding: 4px;
+  }
+  .rista-promo-dots { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
+  .rista-dot { width: 6px; height: 6px; border-radius: 50%; background: #d5d5e0; }
+  .rista-dot.active { background: var(--rista-blue); width: 16px; border-radius: 4px; }
+
+  /* ── HOME CATEGORY ROWS ── */
+  .rista-state { text-align: center; padding: 50px 20px; color: #999; font-size: 0.95rem; }
+  .rista-home-row { padding: 22px 0 4px; width: 100%; max-width: 100%; box-sizing: border-box; contain: layout style; }
+  .rista-home-row-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 0 14px; width: 100%; max-width: 100%; box-sizing: border-box; }
+  .rista-home-row-title { font-size: 1.08rem; font-weight: 800; margin: 0; }
+  .rista-home-row-viewall { font-size: 0.82rem; font-weight: 700; color: var(--rista-blue); text-decoration: none; background: none; border: none; cursor: pointer; }
+
+  .rista-scroll-row {
+    display: flex; gap: 12px; overflow-x: auto; overflow-y: hidden;
+    padding-bottom: 6px; padding-left: 14px; padding-right: 14px; width: 100%; max-width: 100%;
+    box-sizing: border-box; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    overflow-anchor: none; scroll-behavior: auto;
+    overscroll-behavior-x: contain; touch-action: pan-x; scroll-snap-type: none;
+  }
+
+  .rista-scroll-row::-webkit-scrollbar { display: none; }
+  .rista-scroll-row::after {
+    content: "";
+    display: block;
+    flex: 0 0 14px;
+    min-width: 14px;
+    width: 14px;
+    height: 1px;
+    flex-shrink: 0;
+  }
+
+  .rista-card { flex-shrink: 0; width: 122px; background: #fff; border-radius: 16px; border: 1px solid #f0f0f0; overflow: hidden; position: relative; contain: content; }
+  .rista-card-img { width: 100%; height: 88px; object-fit: cover; display: block; background: #eee; }
+  .rista-card-img-fallback { width: 100%; height: 88px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 800; color: #fff; background: linear-gradient(135deg, var(--rista-blue), var(--rista-blue-dark)); }
+  .rista-card-body { padding: 10px 10px 12px; }
+  .rista-card-name { font-size: 0.82rem; font-weight: 700; line-height: 1.25; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.1em; }
+  .rista-card-bottom-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .rista-card-price { font-size: 0.85rem; font-weight: 800; color: #222; }
+  .rista-card-badge { position: absolute; top: 8px; left: 8px; background: var(--rista-blue); color: #fff; font-size: 0.58rem; font-weight: 800; text-transform: uppercase; padding: 3px 7px; border-radius: 6px; }
+  .rista-card { position: relative; }
+  .rista-card.sold-out { opacity: 0.45; }
+  .rista-card.sold-out .rista-add-pill, .rista-card.sold-out .rista-qty-pill { display: none; }
+
+  .rista-add-pill {
+    background: var(--rista-blue); color: #fff; border: none;
+    font-size: 0.72rem; font-weight: 800; padding: 6px 14px; border-radius: 16px; cursor: pointer; white-space: nowrap;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    position: relative; z-index: 3; pointer-events: auto;
+  }
+  .rista-add-pill:active { opacity: 0.85; }
+  .rista-qty-pill { display: flex; align-items: center; gap: 6px; background: var(--rista-blue); border-radius: 16px; padding: 3px 6px; }
+  .rista-qty-pill button { width: 18px; height: 18px; border-radius: 50%; border: none; background: #fff; color: var(--rista-blue); font-weight: 800; font-size: 0.8rem; cursor: pointer; line-height: 1; }
+  .rista-qty-pill .qty { color: #fff; font-size: 0.75rem; font-weight: 700; min-width: 12px; text-align: center; }
+
+  /* ── INFO STRIP ── */
+  .rista-info-strip { margin: 20px 18px; border: 1px solid #dfe1ea; border-radius: 12px; padding: 10px 6px; display: flex; align-items: center; justify-content: space-between; text-align: center; font-size: 0.6rem; font-weight: 700; color: var(--rista-blue); overflow: hidden; flex-wrap: nowrap; }
+
+  .rista-info-item { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 0 2px; }
+
+  .rista-info-item small { color: #777; font-weight: 500; font-size: 0.62rem; }
+
+  /* ── BLUE HEADER (Categories / Loyalty / Cart / Account) ── */
+  .rista-view-blue { min-height: 100vh; background: #fff; margin-top: 0 !important; padding-top: 0 !important; }
+  .rista-blue-header { display: none !important; }
+  .mcc-edit-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; background: #fff; border-bottom: 1px solid #f0f0f0;
+  }
+  .mcc-edit-topbar-title { font-weight: 800; font-size: 1.1rem; color: var(--rista-text); }
+
+  .rista-sheet {
+    background: #fff; border-radius: 0; margin-top: 0 !important; position: relative; z-index: 10;
+    padding: 16px 18px 20px; min-height: calc(100vh - 84px); box-sizing: border-box;
+  }
+  .rista-page-title { font-size: 1.4rem; font-weight: 800; margin: 0 0 22px; position: relative; display: inline-block; }
+  .rista-title-underline { display: block; width: 34px; height: 4px; background: var(--rista-blue); border-radius: 3px; margin-top: 6px; }
+
+  /* ── CATEGORY GRID (3 col) ── */
+  .rista-cat-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px 12px; }
+  .rista-cat-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; text-align: center; }
+  .rista-cat-tile-img {
+    width: 100%; aspect-ratio: 1/1; border-radius: 16px; overflow: hidden; background: #f0f1f8;
+    display: flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 800; color: var(--rista-blue);
+  }
+  .rista-cat-tile-img img { width: 100%; height: 100%; object-fit: cover; }
+  .rista-cat-tile-label { font-size: 0.8rem; font-weight: 700; color: #222; }
+  .rista-cat-tile-arrow {
+    width: 26px; height: 26px; border-radius: 50%; background: var(--rista-blue); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 0.8rem; border: none;
+  }
+
+  /* ── MENU / CATEGORY DETAIL GRID (2 col) ── */
+  .rista-menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .rista-menu-grid .rista-card { width: 100%; }
+  .rista-menu-grid .rista-card-img,
+  .rista-menu-grid .rista-card-img-fallback { height: 110px; }
+
+  /* ── LOYALTY ── */
+  .rista-points-card {
+    border-radius: 18px; overflow: hidden; background: linear-gradient(135deg, var(--rista-blue) 0%, var(--rista-blue-dark) 100%);
+    color: #fff; margin-bottom: 18px;
+  }
+  .rista-points-top { padding: 22px 20px 18px; }
+  .rista-points-label { font-size: 0.85rem; opacity: 0.9; margin: 0 0 6px; }
+  .rista-points-num { font-size: 2.6rem; font-weight: 800; margin: 0; line-height: 1; }
+  .rista-points-suffix { font-size: 0.85rem; opacity: 0.9; margin: 4px 0 0; }
+  .rista-points-bottom { background: rgba(0,0,0,0.18); padding: 12px 20px; font-size: 0.82rem; font-weight: 700; }
+
+  .rista-earn-card { border: 1px solid #eee; border-radius: 14px; padding: 16px; }
+  .rista-earn-card h3 { margin: 0 0 12px; font-size: 1rem; font-weight: 800; }
+  .rista-earn-row { display: flex; align-items: center; gap: 12px; }
+  .rista-earn-icon { width: 38px; height: 38px; border-radius: 50%; background: var(--rista-blue-tile); color: var(--rista-blue); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .rista-earn-row p { margin: 0; font-size: 0.85rem; color: #444; }
+
+  /* ── CART ── */
+  .rista-pickup-bar {
+    display: flex; align-items: center; gap: 10px; background: #f2f3fa; border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; position: relative; min-width: 0;
+  }
+  .rista-pickup-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--rista-blue); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .rista-pickup-copy { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 0.8rem; color: #555; gap: 2px; }
+  .rista-pickup-copy strong { font-size: 0.88rem; color: #222; }
+  .rista-pickup-change { background: none; border: none; color: var(--rista-blue); font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+  .rista-pickup-change-wrap { position: relative; flex-shrink: 0; }
+
+  .rista-cart-items { margin-bottom: 6px; }
+  .rista-cart-empty { color: #bbb; font-size: 0.9rem; text-align: center; padding: 30px 0; }
+  .rista-cart-item-card { border: 1px solid #eee; border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+  .rista-cart-item-top { display: flex; gap: 12px; }
+  .rista-cart-item-img { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; background: #eee; flex-shrink: 0; }
+  .rista-cart-item-img-fallback { width: 64px; height: 64px; border-radius: 10px; background: linear-gradient(135deg, var(--rista-blue), var(--rista-blue-dark)); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0; }
+  .rista-cart-item-info { flex: 1; min-width: 0; }
+  .rista-cart-item-name { font-weight: 700; font-size: 0.92rem; }
+  .rista-cart-item-variant { font-size: 0.76rem; color: #888; margin: 2px 0 8px; }
+  .rista-cart-item-price { font-weight: 700; font-size: 0.9rem; }
+  .rista-cart-item-remove {
+    background: #f1f5f9; border: none; color: #64748b; width: 26px; height: 26px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; font-weight: 700; cursor: pointer; align-self: flex-start;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    line-height: 1; padding: 0; margin-left: 6px; flex-shrink: 0;
+  }
+  .rista-cart-item-remove:hover { background: #fee2e2; color: #ef4444; }
+  .rista-cart-item-remove:active { transform: scale(0.92); }
+  .rista-cart-item-qty-row { display: flex; align-items: center; justify-content: flex-end; margin-top: -22px; }
+  .rista-cart-item-stepper { display: flex; align-items: center; gap: 10px; border: 1px solid var(--rista-blue); border-radius: 18px; padding: 4px 10px; }
+  .rista-cart-item-stepper button { border: none; background: none; color: var(--rista-blue); font-weight: 800; font-size: 0.95rem; cursor: pointer; }
+  .rista-cart-item-stepper .qty { font-weight: 700; font-size: 0.85rem; min-width: 12px; text-align: center; }
+  .rista-cart-item-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f2f2f2; font-size: 0.8rem; }
+  .rista-add-note { color: var(--rista-blue); font-weight: 700; background: none; border: none; cursor: pointer; font-size: 0.8rem; }
+  .rista-item-total-label { color: #888; }
+  .rista-item-total-value { font-weight: 800; }
+
+  .rista-upsell { margin: 18px 0; }
+  .rista-upsell-title { font-weight: 800; margin: 0 0 2px; }
+  .rista-upsell-sub { font-size: 0.78rem; color: #888; margin: 0 0 12px; }
+
+  .rista-bill-card { border: 1px solid #eee; border-radius: 14px; padding: 18px; margin-top: 6px; }
+  .rista-bill-title { font-weight: 800; margin: 0 0 12px; }
+  .rista-bill-row { display: flex; justify-content: space-between; font-size: 0.88rem; color: #555; margin-bottom: 8px; }
+  .rista-bill-tax-row { font-size: 0.8rem; color: #777; margin-bottom: 8px; }
+  .rista-bill-total { font-weight: 800; color: #111; font-size: 1rem; border-top: 1px dashed #eee; padding-top: 8px; margin-top: 4px; }
+  .rista-bill-tax { display: block; text-align: right; color: #999; margin-bottom: 14px; }
+  .rista-checkout-btn {
+    width: 100%; padding: 14px; background: linear-gradient(135deg, var(--rista-blue), var(--rista-blue-dark));
+    color: #fff; border: none; border-radius: 12px; font-size: 1rem; font-weight: 700; cursor: pointer;
+  }
+  .rista-checkout-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .rista-secure-note { text-align: center; font-size: 0.76rem; color: #999; margin: 10px 0 0; }
+
+  /* ── ACCOUNT ── */
+  .rista-profile-card {
+    display: flex; align-items: center; gap: 14px; background: #f2f3fa; border-radius: 16px; padding: 16px; margin-bottom: 18px; min-width: 0;
+  }
+  .rista-profile-avatar { width: 56px; height: 56px; border-radius: 14px; background: var(--rista-blue); color: #fff; font-weight: 800; font-size: 1.3rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .rista-profile-copy { min-width: 0; }
+  .rista-profile-name { font-weight: 800; font-size: 1rem; margin: 0 0 2px; }
+  .rista-profile-phone { font-size: 0.8rem; color: #777; margin: 0 0 10px; }
+  .rista-edit-profile-btn { display: inline-block; border: 1.5px solid var(--rista-blue); color: var(--rista-blue); font-size: 0.76rem; font-weight: 700; padding: 6px 14px; border-radius: 16px; text-decoration: none; }
+
+  .rista-account-list { display: flex; flex-direction: column; }
+  .rista-account-row {
+    display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid #f2f2f2;
+    text-decoration: none; color: inherit; background: none; border-left: none; border-right: none; border-top: none;
+    width: 100%; text-align: left; cursor: pointer;
+  }
+  .rista-account-icon { width: 36px; height: 36px; border-radius: 50%; background: #f0f1f8; color: var(--rista-blue); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .rista-account-copy { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .rista-account-copy strong { font-size: 0.9rem; }
+  .rista-account-copy small { font-size: 0.74rem; color: #888; }
+  .rista-account-chevron { color: #bbb; font-size: 1.1rem; flex-shrink: 0; }
+  .rista-account-row.danger .rista-account-icon { background: #fdeaea; color: var(--rista-accent); }
+
+  /* ── LOGIN SCREEN ── */
+  .mcc-login-card { display: flex; flex-direction: column; padding: 10px 0 24px; }
+  .mcc-login-hero { text-align: center; margin-bottom: 24px; }
+  .mcc-login-avatar {
+    width: 64px; height: 64px; border-radius: 50%; background: linear-gradient(135deg, var(--rista-blue), var(--rista-blue-dark));
+    color: #fff; font-size: 1.8rem; display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 12px; box-shadow: 0 4px 12px rgba(10,6,255,0.25);
+  }
+  .mcc-login-title { font-size: 1.3rem; font-weight: 800; color: #12142b; margin: 0 0 6px; }
+  .mcc-login-sub { font-size: 0.85rem; color: #666; margin: 0; line-height: 1.4; }
+  .mcc-login-form { display: flex; flex-direction: column; gap: 16px; margin-bottom: 16px; }
+  .mcc-login-footer { text-align: center; margin-top: 12px; font-size: 0.88rem; color: #666; }
+  .mcc-login-footer p { margin: 6px 0; }
+  .mcc-login-link { color: var(--rista-blue); font-weight: 700; text-decoration: none; }
+  .mcc-login-link-muted { color: #888; font-size: 0.82rem; text-decoration: underline; }
+
+  /* ── EDIT PROFILE SCREEN ── */
+  .mcc-edit-avatar-container { display: flex; justify-content: center; margin: 10px 0 24px; }
+  .mcc-avatar-wrapper { position: relative; width: 88px; height: 88px; }
+  .mcc-avatar-circle {
+    width: 88px; height: 88px; border-radius: 50%; background: linear-gradient(135deg, var(--rista-blue), var(--rista-blue-dark));
+    color: #fff; font-weight: 800; font-size: 2rem; display: flex; align-items: center; justify-content: center;
+    overflow: hidden; border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  .mcc-avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
+  .mcc-camera-badge {
+    position: absolute; bottom: 0; right: 0; width: 28px; height: 28px; border-radius: 50%;
+    background: #fff; border: 1.5px solid #e2e8f0; display: flex; align-items: center; justify-content: center;
+    font-size: 0.82rem; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  }
+  .mcc-profile-form { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
+  .mcc-form-field { display: flex; flex-direction: column; gap: 6px; }
+  .mcc-form-field label { font-size: 0.8rem; font-weight: 600; color: #8e8e93; letter-spacing: 0.01em; }
+  .mcc-form-field input, .mcc-form-field select {
+    width: 100%; height: 48px; padding: 0 14px; border: 1.5px solid #e5e7eb; border-radius: 12px;
+    background: #f8fafc; font-size: 0.92rem; font-weight: 600; color: #1e293b; outline: none;
+    transition: border-color 0.15s, background 0.15s; font-family: inherit; box-sizing: border-box;
+  }
+  .mcc-form-field input:focus, .mcc-form-field select:focus {
+    border-color: var(--rista-blue); background: #fff;
+  }
+  .mcc-phone-input-row { display: flex; gap: 8px; width: 100%; }
+  .mcc-country-picker {
+    display: flex; align-items: center; gap: 4px; padding: 0 12px; height: 48px;
+    border: 1.5px solid #e5e7eb; border-radius: 12px; background: #f8fafc; font-size: 0.88rem;
+    font-weight: 700; color: #1e293b; flex-shrink: 0;
+  }
+  .mcc-date-input-wrap, .mcc-select-wrap { position: relative; width: 100%; }
+  .mcc-calendar-icon, .mcc-select-wrap .chevron {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    pointer-events: none; opacity: 0.6; font-size: 0.9rem;
+  }
+  .mcc-save-profile-btn {
+    width: 100%; height: 52px; background: linear-gradient(135deg, var(--rista-blue), var(--rista-blue-dark)); color: #fff; border: none;
+    border-radius: 14px; font-size: 1rem; font-weight: 800; cursor: pointer; margin-top: 10px;
+    box-shadow: 0 4px 14px rgba(10,6,255,0.35); transition: opacity 0.15s, transform 0.1s;
+  }
+  .mcc-save-profile-btn:active { transform: scale(0.99); opacity: 0.9; }
+
+  /* ── BOTTOM NAV ── */
+  .rista-bottom-nav {
+    position: fixed; left: 50%; transform: translate3d(-50%, 0, 0); bottom: var(--rista-footer-offset, 0px);
+    width: 100%; max-width: 480px; background: #fff; border-top: 1px solid #eee;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 200;
+    will-change: transform;
+    backface-visibility: hidden;
+  }
+  .rista-nav-item {
+    background: none; border: none; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-size: 0.58rem; font-weight: 700; color: #999; cursor: pointer; flex: 1; padding: 4px 0; text-decoration: none;
+  }
+  .rista-nav-item.active { color: var(--rista-blue); }
+  .rista-nav-icon { font-size: 1.1rem; position: relative; }
+  .rista-nav-badge { position: absolute; top: -6px; right: -10px; background: var(--rista-accent); color: #fff; font-size: 0.55rem; font-weight: 800; border-radius: 8px; padding: 1px 5px; line-height: 1.3; }
+  .rista-nav-fab {
+    width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, var(--rista-blue), var(--rista-blue-dark));
+    color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+    margin-top: -26px; box-shadow: 0 4px 14px rgba(0,0,0,0.3); flex-shrink: 0; text-decoration: none;
+  }
+
+  /* ── SIZE BOTTOM SHEET ── */
+  #size-sheet-overlay {
+    display: none; position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,0.45);
+    align-items: flex-end; justify-content: center;
+  }
+  #size-sheet-overlay.open { display: flex; }
+  .size-sheet {
+    background: #fff; border-radius: 24px 24px 0 0;
+    width: 100%; max-width: 480px;
+    padding: 12px 20px 40px;
+    position: relative;
+    animation: sheetUp 0.28s cubic-bezier(.22,.68,0,1.2);
+  }
+  @keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .size-sheet-handle {
+    width: 36px; height: 4px; border-radius: 2px;
+    background: #ddd; margin: 0 auto 16px;
+  }
+  .size-sheet-close {
+    position: absolute; top: 14px; right: 16px;
+    background: #f5f5f7; border: none; border-radius: 50%;
+    width: 30px; height: 30px; font-size: 0.85rem;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .size-sheet-header {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  }
+  .size-sheet-img-wrap { width: 64px; height: 64px; border-radius: 12px; overflow: hidden; flex-shrink: 0; background: #f5f5f7; }
+  .size-sheet-img-wrap img { width: 100%; height: 100%; object-fit: cover; }
+  .size-sheet-img-fallback {
+    width: 64px; height: 64px; border-radius: 12px; background: #e8e7ff;
+    color: var(--rista-blue); font-size: 1.6rem; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .size-sheet-name { font-size: 1.05rem; font-weight: 800; }
+  .size-sheet-label {
+    font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; color: #888; margin-bottom: 12px;
+  }
+  .size-pill-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border: 1px solid #eee; border-radius: 12px;
+    margin-bottom: 10px; background: #fff; transition: background 0.15s ease, border-color 0.15s ease;
+    cursor: pointer; user-select: none;
+  }
+  .size-pill-row:hover { border-color: var(--rista-blue); background: #f8faff; }
+  .size-pill-row.unavail { opacity: 0.45; cursor: not-allowed; }
+  .size-pill-left { display: flex; flex-direction: column; gap: 2px; }
+  .size-pill-label { font-size: 0.95rem; font-weight: 700; color: #111; }
+  .size-pill-price { font-size: 0.85rem; color: #555; font-weight: 600; }
+  .size-pill-action { display: flex; align-items: center; margin-left: 12px; }
+  
+  /* AGGRESSIVE BUTTON STYLING - Override ALL Shopify theme styles */
+  button[data-add-variant],
+  [data-add-variant] {
+    background-color: #0a06ff !important;
+    background-image: none !important;
+    background: #0a06ff !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 20px !important;
+    padding: 8px 20px !important;
+    font-weight: 800 !important;
+    font-size: 0.88rem !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: 0 2px 8px rgba(10,6,255,0.3) !important;
+    transition: transform 0.1s ease !important;
+    outline: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+    text-decoration: none !important;
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+  }
+  button[data-add-variant]::after,
+  button[data-add-variant]::before,
+  [data-add-variant]::after,
+  [data-add-variant]::before {
+    display: none !important;
+    content: none !important;
+    background: none !important;
+  }
+  button[data-add-variant]:hover,
+  button[data-add-variant]:focus,
+  button[data-add-variant]:active,
+  button[data-add-variant]:focus-visible,
+  button[data-add-variant]:visited,
+  button[data-add-variant]:link,
+  [data-add-variant]:hover,
+  [data-add-variant]:focus,
+  [data-add-variant]:active,
+  [data-add-variant]:focus-visible,
+  [data-add-variant]:visited,
+  [data-add-variant]:link {
+    background-color: #0a06ff !important;
+    background-image: none !important;
+    background: #0a06ff !important;
+    color: #ffffff !important;
+    opacity: 1 !important;
+    box-shadow: 0 2px 8px rgba(10,6,255,0.3) !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+    border: none !important;
+    outline: none !important;
+  }
+  button[data-add-variant]:active,
+  [data-add-variant]:active { 
+    transform: scale(0.95) !important;
+    background: #0a06ff !important;
+    background-color: #0a06ff !important;
+    color: #ffffff !important;
+  }
+  .size-stepper {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--rista-blue); border-radius: 20px;
+    padding: 6px 12px; color: #fff; font-weight: 700;
+  }
+  .size-stepper button {
+    background: none; border: none; color: #fff;
+    font-size: 1.1rem; font-weight: 700; cursor: pointer; padding: 0 2px;
+  }
+  .size-sold-out { font-size: 0.8rem; color: #aaa; }
+  .rista-card-qty-badge {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--rista-blue); color: #fff;
+    border-radius: 50%; width: 20px; height: 20px;
+    font-size: 0.72rem; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2;
+  }
+  .rista-card { position: relative; }
+  .rista-card-qty-inline { font-weight: 800; }
+
+</style>
+
+<script>
+(function() {
+  const MIDDLEWARE = "https://mycoffeeco-middleware-original.onrender.com";
+
+  // ── STATE ──
+  let cart = {};
+  let menuData = null;
+  let searchTerm = "";
+  let detailCategoryId = null;
+
+  // ── DOM REFS ──
+  const branchSelect     = document.getElementById('branch-select');
+  const branchSelectCart = document.getElementById('branch-select-cart');
+  const channelSelect    = document.getElementById('channel-select');
+  // Cart screen's branch dropdown mirrors the home one's options (kept in
+  // sync below) since the home <select> lives inside a view that's
+  // display:none while the Cart view is showing, and a hidden ancestor
+  // can't be focused/opened.
+  branchSelectCart.innerHTML = branchSelect.innerHTML;
+  branchSelectCart.value = branchSelect.value;
+  const branchLabel   = document.getElementById('home-branch-label');
+  const loading       = document.getElementById('menu-loading');
+  const errorEl       = document.getElementById('menu-error');
+  const searchEmptyEl = document.getElementById('search-empty');
+  const homeRows      = document.getElementById('home-rows');
+  const detailGrid    = document.getElementById('detail-grid');
+  const categoriesGrid = document.getElementById('categories-grid');
+  const searchInput   = document.getElementById('menu-search');
+
+  // ── VIEW ROUTING ──
+  const views = ['home', 'categories', 'detail', 'loyalty', 'cart', 'account', 'edit-profile'];
+
+  function showView(name) {
+    views.forEach(v => {
+      const el = document.getElementById('view-' + v);
+      if (el) el.style.display = (v === name) ? '' : 'none';
+    });
+    document.querySelectorAll('.rista-nav-item').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.nav === name);
+    });
+    window.scrollTo({ top: 0 });
+  }
+
+  const bindClick = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', fn);
+  };
+
+  bindClick('nav-home', () => showView('home'));
+  bindClick('nav-category', () => showView('categories'));
+  bindClick('nav-loyalty', () => showView('loyalty'));
+  bindClick('nav-cart-btn', () => showView('cart'));
+  bindClick('open-categories-btn', () => showView('categories'));
+  bindClick('detail-back', () => showView('categories'));
+  bindClick('cart-back', () => showView('home'));
+  bindClick('account-back', () => showView('home'));
+  bindClick('login-back', () => showView('home'));
+  bindClick('account-loyalty-link', () => showView('loyalty'));
+  ['edit-profile-trigger-btn', 'account-info-trigger-btn'].forEach(id => {
+    bindClick(id, () => showView('edit-profile'));
+  });
+  bindClick('edit-profile-back', () => showView('account'));
+
+  ['cart-icon-cat','cart-icon-detail','cart-icon-loy','cart-icon-self','cart-icon-acc'].forEach(id => {
+    bindClick(id, () => showView('cart'));
+  });
+  ['account-entry','account-entry-2','account-entry-3'].forEach(id => {
+    bindClick(id, () => showView('account'));
+  });
+
+  // Check URL parameters to open target view after login redirect
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialView = urlParams.get('view');
+  if (initialView && views.includes(initialView)) {
+    showView(initialView);
+  }
+
+  // ── EDIT PROFILE LOGIC ──
+  const editProfileForm = document.getElementById('edit-profile-form');
+  const avatarFileInput = document.getElementById('avatar-file-input');
+  const changeAvatarBtn = document.getElementById('change-avatar-btn');
+  const profileAvatarCircle = document.getElementById('profile-avatar-circle');
+
+  if (changeAvatarBtn && avatarFileInput) {
+    changeAvatarBtn.addEventListener('click', () => avatarFileInput.click());
+    avatarFileInput.addEventListener('change', function() {
+      const file = this.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          if (profileAvatarCircle) profileAvatarCircle.innerHTML = `<img src="${e.target.result}" alt="Profile avatar">`;
+          localStorage.setItem('mcc_user_avatar', e.target.result);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
+
+  const savedAvatar = localStorage.getItem('mcc_user_avatar');
+  if (savedAvatar && profileAvatarCircle) {
+    profileAvatarCircle.innerHTML = `<img src="${savedAvatar}" alt="Profile avatar">`;
+  }
+
+  if (editProfileForm) {
+    editProfileForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const saveBtn = document.getElementById('save-profile-btn');
+      const originalText = saveBtn.textContent;
+      saveBtn.textContent = 'Saving...';
+      saveBtn.disabled = true;
+
+      const nameVal = document.getElementById('profile-name-input').value.trim();
+      const phoneVal = document.getElementById('profile-phone-input').value.trim();
+      const emailVal = document.getElementById('profile-email-input').value.trim();
+      const dobVal = document.getElementById('profile-dob-input').value;
+      const genderVal = document.getElementById('profile-gender-select').value;
+      const nationalityVal = document.getElementById('profile-nationality-input').value.trim();
+
+      localStorage.setItem('mcc_user_name', nameVal);
+      localStorage.setItem('mcc_user_phone', phoneVal);
+      localStorage.setItem('mcc_user_email', emailVal);
+      localStorage.setItem('mcc_user_dob', dobVal);
+      localStorage.setItem('mcc_user_gender', genderVal);
+      localStorage.setItem('mcc_user_nationality', nationalityVal);
+
+      const nameEl = document.querySelector('.rista-profile-name');
+      const phoneEl = document.querySelector('.rista-profile-phone');
+      if (nameEl && nameVal) nameEl.textContent = nameVal;
+      if (phoneEl && phoneVal) phoneEl.textContent = '+91 ' + phoneVal;
+
+      fetch(`${MIDDLEWARE}/api/customers/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: nameVal,
+          phone: phoneVal ? '+91' + phoneVal : '',
+          email: emailVal,
+          dob: dobVal,
+          gender: genderVal,
+          nationality: nationalityVal
+        })
+      }).catch(err => console.warn('Customer sync warning:', err));
+
+      setTimeout(() => {
+        saveBtn.textContent = 'Saved! ✓';
+        setTimeout(() => {
+          saveBtn.textContent = originalText;
+          saveBtn.disabled = false;
+          showView('account');
+        }, 600);
+      }, 400);
+    });
+  }
+
+  // ── OFFSETS (theme header/footer fix) ──
+  function detectSiteHeaderHeight() {
+    let maxHeight = 0;
+    document.querySelectorAll('body > *, header, [class*="header"], [id*="header"]').forEach(function(el) {
+      if (el.closest('.rista-app')) return;
+      const cs = getComputedStyle(el);
+      if ((cs.position === 'fixed' || cs.position === 'sticky') &&
+          parseInt(cs.top) <= 5 && el.offsetHeight > 0 && el.offsetHeight < 300) {
+        maxHeight = Math.max(maxHeight, el.offsetHeight);
+      }
+    });
+    return maxHeight;
+  }
+  function detectSiteFooterHeight() {
+    let maxHeight = 0;
+    document.querySelectorAll('body > *, footer, [class*="footer"], [id*="footer"], [class*="bottom-nav"], [class*="tabbar"], nav').forEach(function(el) {
+      if (el.closest('.rista-app')) return;
+      const cs = getComputedStyle(el);
+      if (cs.position === 'fixed' && parseInt(cs.bottom) <= 5 && el.offsetHeight > 0 && el.offsetHeight < 200) {
+        maxHeight = Math.max(maxHeight, el.offsetHeight);
+      }
+    });
+    return maxHeight;
+  }
+  function hideThemeBottomNav() {
+    document.querySelectorAll('body > *, footer, [class*="footer"], [id*="footer"], [class*="bottom-nav"], [class*="tabbar"], nav').forEach(function(el) {
+      if (el.closest('.rista-app')) return;
+      const cs = getComputedStyle(el);
+      if (cs.position === 'fixed' && parseInt(cs.bottom) <= 5 && el.offsetHeight > 0 && el.offsetHeight < 200) {
+        el.style.display = 'none';
+      }
+    });
+  }
+  // FIX: snap the page back to horizontal position 0 any time offsets are
+  // recalculated (initial load, resize, after menu render) — a safety net
+  // in case anything still nudges the document sideways.
+  function applyOffsets() {
+    hideThemeBottomNav();
+    const app = document.getElementById('rista-app');
+    if (app) {
+      let parent = app.parentElement;
+      while (parent && parent !== document.body) {
+        parent.style.paddingLeft = '0px';
+        parent.style.paddingRight = '0px';
+        parent.style.paddingTop = '0px';
+        parent.style.marginLeft = '0px';
+        parent.style.marginRight = '0px';
+        parent.style.marginTop = '0px';
+        parent.style.maxWidth = '100%';
+        parent = parent.parentElement;
+      }
+    }
+    document.documentElement.style.setProperty('--rista-header-offset', detectSiteHeaderHeight() + 'px');
+    document.documentElement.style.setProperty('--rista-footer-offset', detectSiteFooterHeight() + 'px');
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollLeft = 0;
+    window.scrollTo(0, window.scrollY);
+  }
+  window.addEventListener('load', applyOffsets);
+  window.addEventListener('resize', applyOffsets);
+
+  // ── BRANCH / CHANNEL ──
+  function updateChannels() {
+    if (branchSelectCart.value !== branchSelect.value) branchSelectCart.value = branchSelect.value;
+    const opt = branchSelect.options[branchSelect.selectedIndex];
+    const channels = (opt.dataset.channels || "Takeaway").split(",");
+    const current = channelSelect.value;
+    channelSelect.innerHTML = channels.map(ch =>
+      `<option value="${ch}" ${ch === current ? 'selected' : ''}>${ch}</option>`
+    ).join('');
+    updateLabels();
+  }
+  function updateLabels() {
+    const branchText = branchSelect.options[branchSelect.selectedIndex].text;
+    const channelVal = channelSelect.value || 'Website';
+
+    const channelLabelEl = document.getElementById('home-channel-label');
+    const channelIconEl  = document.getElementById('home-channel-icon');
+    if (channelLabelEl) channelLabelEl.textContent = channelVal;
+    if (channelIconEl) {
+      if (channelVal === 'Website') channelIconEl.textContent = '🌐';
+      else if (channelVal === 'Delivery') channelIconEl.textContent = '🛵';
+      else if (channelVal === 'Dine In') channelIconEl.textContent = '🍽️';
+      else if (channelVal === 'Takeaway') channelIconEl.textContent = '🛍️';
+      else channelIconEl.textContent = '🛍️';
+    }
+
+    if (branchLabel) branchLabel.textContent = branchText;
+
+    const pickupChannelLabel = document.getElementById('pickup-channel-label');
+    const pickupBranchLabel  = document.getElementById('pickup-branch-label');
+    if (pickupChannelLabel) pickupChannelLabel.textContent = channelVal + ' Order';
+    if (pickupBranchLabel)  pickupBranchLabel.textContent  = 'at ' + branchText;
+  }
+  branchSelectCart.addEventListener('change', function() {
+    branchSelect.value = branchSelectCart.value;
+    updateChannels();
+    loadMenu();
+  });
+
+  // ── LOAD MENU ──
+  function loadMenu() {
+    const branch = branchSelect.value;
+    const channel = channelSelect.value;
+
+    loading.style.display = 'block';
+    errorEl.style.display = 'none';
+    homeRows.innerHTML = '';
+
+    fetch(`${MIDDLEWARE}/api/menu?branch=${encodeURIComponent(branch)}&channel=${encodeURIComponent(channel)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) throw new Error(data.message || 'Failed');
+        menuData = data;
+        renderHomeRows(data.categories);
+        renderCategoriesGrid(data.categories);
+        applyOffsets();
+      })
+      .catch(() => { errorEl.style.display = 'block'; })
+      .finally(() => { loading.style.display = 'none'; });
+  }
+
+  // ── IMAGE HELPERS ──
+  window.skuImageMap = window.skuImageMap || {};
+  function getItemImage(item) {
+    if (item.image || item.imageUrl || item.img || item.imageURL) {
+      return item.image || item.imageUrl || item.img || item.imageURL;
+    }
+    if (item.skuCode && window.skuImageMap[item.skuCode]) {
+      return window.skuImageMap[item.skuCode];
+    }
+    return null;
+  }
+  function cardImageHTML(item) {
+    const src = getItemImage(item);
+    if (src) return `<img class="rista-card-img" src="${src}" alt="${escapeAttr(item.name)}" loading="lazy" decoding="async">`;
+    return `<div class="rista-card-img-fallback">${(item.name || '?').charAt(0).toUpperCase()}</div>`;
+  }
+  function escapeAttr(str) { return (str || '').replace(/'/g, "\\'"); }
+
+  // ── SIZE BOTTOM SHEET ──
+  // Created once on DOMContentLoaded, reused for every Group item tap
+  function initSizeSheet() {
+    if (document.getElementById('size-sheet-overlay')) return; // already exists
+    const sheet = document.createElement('div');
+    sheet.id = 'size-sheet-overlay';
+    sheet.innerHTML = `
+      <div class="size-sheet" id="size-sheet">
+        <div class="size-sheet-handle"></div>
+        <div class="size-sheet-header">
+          <div class="size-sheet-img-wrap" id="size-sheet-img"></div>
+          <div class="size-sheet-info">
+            <div class="size-sheet-name" id="size-sheet-name"></div>
+          </div>
+        </div>
+        <div class="size-sheet-label">Choose Size</div>
+        <div class="size-pills" id="size-pills"></div>
+        <button class="size-sheet-close" id="size-sheet-close" aria-label="Close">✕</button>
+      </div>
+    `;
+    document.body.appendChild(sheet);
+    document.getElementById('size-sheet-close').addEventListener('click', closeSizeSheet);
+    sheet.addEventListener('click', function(e) { if (e.target === sheet) closeSizeSheet(); });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSizeSheet);
+  } else {
+    initSizeSheet();
+  }
+
+  function openSizeSheet(skuCode) {
+    const item = window.__menuItems[skuCode];
+    if (!item) return;
+    const overlay = document.getElementById('size-sheet-overlay');
+    document.getElementById('size-sheet-name').textContent = item.name;
+
+    // Image
+    const imgWrap = document.getElementById('size-sheet-img');
+    const src = getItemImage(item);
+    imgWrap.innerHTML = src
+      ? `<img src="${src}" alt="${escapeAttr(item.name)}">`
+      : `<div class="size-sheet-img-fallback">${(item.name||'?').charAt(0).toUpperCase()}</div>`;
+
+    // Render Size pills
+    renderSizePills(item);
+
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeSizeSheet() {
+    const overlay = document.getElementById('size-sheet-overlay');
+    overlay.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function renderSizePills(item) {
+    const pillsEl = document.getElementById('size-pills');
+    if (!pillsEl || !item || !item.variants) return;
+
+    pillsEl.innerHTML = item.variants.map((v, idx) => {
+      const varSku = String(v.skuCode || (item.skuCode + '-v-' + idx));
+      const parentSkuStr = String(item.skuCode || '');
+      v.skuCode = varSku;
+      window.__variantParentMap[varSku] = parentSkuStr;
+      window.__menuItems[varSku] = { skuCode: varSku, name: item.name, variant: v.label, price: Number(v.price) || 0, tax: Number(v.tax) || 0 };
+
+      const inCart  = cart[varSku];
+      const qty     = inCart ? inCart.qty : 0;
+      const unavail = v.available === false;
+
+      let actionHTML = '';
+      if (unavail) {
+        actionHTML = '<span class="size-sold-out">Sold out</span>';
+      } else if (qty === 0) {
+        actionHTML = `<button type="button" data-add-variant="${varSku}" data-parent-sku="${item.skuCode}" style="background:#0a06ff !important;background-color:#0a06ff !important;background-image:none !important;color:#fff !important;border:none !important;padding:8px 20px !important;border-radius:20px !important;font-weight:800 !important;font-size:0.88rem !important;cursor:pointer !important;outline:none !important;box-shadow:0 2px 8px rgba(10,6,255,0.3) !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;text-decoration:none !important;-webkit-appearance:none !important;appearance:none !important;">+ Add</button>`;
+      } else {
+        actionHTML = `
+          <div class="size-stepper">
+            <button type="button" data-variant-qty="${varSku}" data-parent-sku="${item.skuCode}" data-delta="-1">−</button>
+            <span>${qty}</span>
+            <button type="button" data-variant-qty="${varSku}" data-parent-sku="${item.skuCode}" data-delta="1">+</button>
+          </div>
+        `;
+      }
+
+      let displayLabel = v.label;
+      if (!displayLabel || displayLabel.toLowerCase() === item.name.toLowerCase()) {
+        displayLabel = `Option ${idx + 1}`;
+      }
+
+      return `
+        <div class="size-pill-row${unavail ? ' unavail' : ''}" ${unavail ? '' : `data-add-variant="${varSku}" data-parent-sku="${item.skuCode}"`}>
+          <div class="size-pill-left">
+            <span class="size-pill-label">${displayLabel}</span>
+            <span class="size-pill-price">₹${v.price}</span>
+          </div>
+          <div class="size-pill-action">${actionHTML}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Rows are built via innerHTML after the menu fetch resolves. On some
+  // mobile browsers, injecting a horizontally-scrollable flex row into an
+  // already-rendered page leaves it initialized at a non-zero scrollLeft
+  // (content appears pre-scrolled, cutting off the left edge of the first
+  // card). Forcing scrollLeft back to 0 on the next frame after each
+  // insertion is the reliable fix.
+  function resetRowScroll(container) {
+    requestAnimationFrame(() => {
+      (container ? container.querySelectorAll('.rista-scroll-row') : document.querySelectorAll('.rista-scroll-row'))
+        .forEach(row => { row.scrollLeft = 0; });
+    });
+  }
+
+  // ── ITEM CARD ──
+  // Items are stored in window.__menuItems by skuCode so openSizeSheet
+  // and event delegation can look them up safely.
+  window.__menuItems = window.__menuItems || {};
+  window.__variantParentMap = window.__variantParentMap || {};
+
+  function cardHTML(item) {
+    const itemSku = item.skuCode || item.itemId || ('item-' + Math.random().toString(36).substring(2, 9));
+    item.skuCode = itemSku;
+    const soldOut = !item.available;
+    const isNew   = item.isNew || (item.tags && item.tags.indexOf('new') !== -1);
+    const isGroup = item.type === 'Group' && item.variants && item.variants.length > 0;
+
+    // Store item for safe lookup
+    window.__menuItems[itemSku] = item;
+    if (isGroup) {
+      item.variants.forEach(v => {
+        if (v.skuCode) {
+          window.__variantParentMap[v.skuCode] = itemSku;
+        }
+      });
+    }
+
+    // For group items, show total qty across all sizes in the badge
+    const totalQty = isGroup
+      ? item.variants.reduce((sum, v) => sum + (cart[v.skuCode] ? cart[v.skuCode].qty : 0), 0)
+      : (cart[itemSku] ? cart[itemSku].qty : 0);
+
+    const priceLabel = isGroup ? `from ₹${item.price}` : `₹${item.price}`;
+
+    return `
+      <div class="rista-card${soldOut ? ' sold-out' : ''}" id="card-${itemSku}">
+        ${isNew ? '<span class="rista-card-badge">New</span>' : ''}
+        ${totalQty > 0 ? `<span class="rista-card-qty-badge">${totalQty}</span>` : ''}
+        ${cardImageHTML(item)}
+        <div class="rista-card-body">
+          <div class="rista-card-name">${item.name}</div>
+          <div class="rista-card-bottom-row">
+            <span class="rista-card-price">${priceLabel}</span>
+            ${soldOut ? '<span class="rista-sold-label">Sold out</span>' :
+              isGroup
+                ? `<button class="rista-add-pill" type="button" data-open-sheet="${itemSku}">
+                     ${totalQty > 0 ? `<span class="rista-card-qty-inline">${totalQty}</span> sizes` : '+ Add'}
+                   </button>`
+                : cardActionHTML(item, cart[itemSku], '')
+            }
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  function cardActionHTML(item, inCart, variantText) {
+    const itemSku = item.skuCode || item.itemId;
+    if (!inCart || inCart.qty === 0) {
+      return `<button class="rista-add-pill" type="button" data-add-simple="${itemSku}">+ Add</button>`;
+    }
+    return `
+      <div class="rista-qty-pill">
+        <button type="button" data-qty-change="${itemSku}" data-delta="-1">−</button>
+        <span class="qty">${inCart.qty}</span>
+        <button type="button" data-qty-change="${itemSku}" data-delta="1">+</button>
+      </div>
+    `;
+  }
+
+  // ── HOME: one row per category ──
+  function renderHomeRows(categories) {
+    if (!categories || !categories.length) {
+      homeRows.innerHTML = '<p class="rista-state">No items available.</p>';
+      return;
+    }
+    homeRows.innerHTML = categories.map(cat => {
+      if (!cat.items || !cat.items.length) return '';
+      const items = cat.items.slice(0, 10);
+      return `
+        <div class="rista-home-row">
+          <div class="rista-home-row-head">
+            <h3 class="rista-home-row-title">${cat.name}</h3>
+            <button class="rista-home-row-viewall" data-cat-id="${cat.categoryId}">View All ›</button>
+          </div>
+          <div class="rista-scroll-row">${items.map(cardHTML).join('')}</div>
+        </div>
+      `;
+    }).join('');
+    homeRows.querySelectorAll('.rista-home-row-viewall').forEach(btn => {
+      btn.addEventListener('click', function() { openCategoryDetail(this.dataset.catId); });
+    });
+    resetRowScroll(homeRows);
+  }
+
+  // ── CATEGORIES SCREEN (3-col tiles) ──
+  function getCategoryImage(cat) {
+    const direct = cat.image || cat.imageUrl || cat.img || cat.imageURL;
+    if (direct) return direct;
+    const firstItem = (cat.items || [])[0];
+    return firstItem ? getItemImage(firstItem) : null;
+  }
+  function renderCategoriesGrid(categories) {
+    categoriesGrid.innerHTML = (categories || []).map(cat => {
+      const src = getCategoryImage(cat);
+      const imgHTML = src
+        ? `<img src="${src}" alt="${escapeAttr(cat.name)}" loading="lazy" decoding="async">`
+        : (cat.name || '?').charAt(0).toUpperCase();
+      return `
+        <div class="rista-cat-tile" data-cat-id="${cat.categoryId}">
+          <div class="rista-cat-tile-img">${imgHTML}</div>
+          <div class="rista-cat-tile-label">${cat.name}</div>
+          <button class="rista-cat-tile-arrow">→</button>
+        </div>
+      `;
+    }).join('');
+    categoriesGrid.querySelectorAll('.rista-cat-tile').forEach(el => {
+      el.addEventListener('click', function() { openCategoryDetail(this.dataset.catId); });
+    });
+  }
+
+  // ── CATEGORY DETAIL / SEARCH RESULTS ──
+  function openCategoryDetail(categoryId) {
+    if (!menuData) return;
+    detailCategoryId = categoryId;
+    const cat = menuData.categories.find(c => String(c.categoryId) === String(categoryId));
+    if (!cat) return;
+    document.getElementById('detail-title').textContent = cat.name;
+    searchEmptyEl.style.display = 'none';
+    detailGrid.innerHTML = (cat.items || []).map(cardHTML).join('');
+    showView('detail');
+  }
+  function renderSearchResults(term) {
+    if (!menuData) return;
+    const matches = [];
+    menuData.categories.forEach(cat => (cat.items || []).forEach(item => {
+      if (item.name.toLowerCase().includes(term)) matches.push(item);
+    }));
+    document.getElementById('detail-title').textContent = 'Search results';
+    if (matches.length === 0) {
+      detailGrid.innerHTML = '';
+      searchEmptyEl.style.display = 'block';
+    } else {
+      searchEmptyEl.style.display = 'none';
+      detailGrid.innerHTML = matches.map(cardHTML).join('');
+    }
+    showView('detail');
+  }
+
+  // ── RE-RENDER ONE ITEM'S ACTION AREA EVERYWHERE IT APPEARS ──
+  function refreshItemUI(skuCode) {
+    if (!menuData || !skuCode) return;
+    let item = menuData.categories.flatMap(c => c.items).find(i => String(i.skuCode) === String(skuCode));
+    if (!item && window.__variantParentMap[skuCode]) {
+      const parentSku = window.__variantParentMap[skuCode];
+      item = menuData.categories.flatMap(c => c.items).find(i => String(i.skuCode) === String(parentSku));
+    }
+    if (!item) return;
+    const targetSku = item.skuCode;
+    document.querySelectorAll(`[id="card-${targetSku}"]`).forEach(cardEl => { cardEl.outerHTML = cardHTML(item); });
+  }
+
+  // ── CART LOGIC ──
+  window.addItem = function(skuCode, name, variant, price, tax) {
+    let item = window.__menuItems[skuCode];
+    if (!item && menuData) {
+      item = menuData.categories.flatMap(c => c.items).find(i => String(i.skuCode) === String(skuCode));
+    }
+    const itemName = name || (item ? item.name : 'Item');
+    const itemPrice = price !== undefined ? price : (item ? item.price : 0);
+    const itemTax = tax !== undefined ? tax : (item ? (item.tax || 0) : 0);
+    const itemVariant = variant || '';
+
+    if (!cart[skuCode]) {
+      cart[skuCode] = { skuCode, name: itemName, variant: itemVariant, price: itemPrice, tax: itemTax, qty: 0 };
+    }
+    cart[skuCode].qty++;
+
+    const parentSku = window.__variantParentMap[skuCode] || skuCode;
+    refreshItemUI(parentSku);
+    if (parentSku !== skuCode) refreshItemUI(skuCode);
+
+    updateCartUI();
+  };
+  window.changeQty = function(skuCode, delta) {
+    if (!cart[skuCode]) return;
+    cart[skuCode].qty += delta;
+    if (cart[skuCode].qty <= 0) delete cart[skuCode];
+
+    const parentSku = window.__variantParentMap[skuCode] || skuCode;
+    refreshItemUI(parentSku);
+    if (parentSku !== skuCode) refreshItemUI(skuCode);
+
+    updateCartUI();
+  };
+
+  function updateCartUI() {
+    const items = Object.values(cart);
+    const count = items.reduce((sum, i) => sum + i.qty, 0);
+
+    // Update all cart badges
+    ['nav-cart-badge','cart-badge-cat','cart-badge-detail','cart-badge-loy','cart-badge-self','cart-badge-acc'].forEach(id => {
+      const badge = document.getElementById(id);
+      if (!badge) return;
+      badge.textContent = count;
+      badge.style.display = count > 0 ? 'inline-flex' : 'none';
+    });
+
+    // Bill summary: base price (ex-tax) + 5% GST shown separately
+    const subtotal  = items.reduce((sum, i) => sum + i.price * i.qty, 0);
+    const taxAmount = items.reduce((sum, i) => sum + (i.tax || 0) * i.qty, 0);
+    const grandTotal = subtotal + taxAmount;
+
+    const subtotalEl = document.getElementById('cart-subtotal');
+    if (subtotalEl) subtotalEl.textContent = `₹${subtotal}`;
+    const taxEl = document.getElementById('cart-tax-included');
+    if (taxEl) taxEl.textContent = `₹${taxAmount}`;
+    const totalEl = document.getElementById('cart-total');
+    if (totalEl) totalEl.textContent = `₹${grandTotal}`;
+
+    const listEl    = document.getElementById('cart-items-list');
+    const footerEl  = document.getElementById('cart-footer');
+    const upsellWrap = document.getElementById('upsell-wrap');
+
+    if (items.length === 0) {
+      if (listEl) listEl.innerHTML = '<p class="rista-cart-empty">Your cart is empty</p>';
+      if (footerEl) footerEl.style.display = 'none';
+      if (upsellWrap) upsellWrap.style.display = 'none';
+    } else {
+      if (listEl) {
+        listEl.innerHTML = items.map(i => `
+          <div class="rista-cart-item-card">
+            <div class="rista-cart-item-top">
+              <div class="rista-cart-item-img-fallback">${i.name.charAt(0).toUpperCase()}</div>
+              <div class="rista-cart-item-info">
+                <div class="rista-cart-item-name">${i.name}</div>
+                <div class="rista-cart-item-variant">${i.variant || 'Regular'}</div>
+                <div class="rista-cart-item-price">₹${i.price}</div>
+              </div>
+              <button class="rista-cart-item-remove" type="button" data-cart-remove="${i.skuCode}" title="Remove item" aria-label="Remove item">✕</button>
+            </div>
+            <div class="rista-cart-item-qty-row">
+              <div class="rista-cart-item-stepper">
+                <button type="button" data-cart-stepper="${i.skuCode}" data-delta="-1">−</button>
+                <span class="qty">${i.qty}</span>
+                <button type="button" data-cart-stepper="${i.skuCode}" data-delta="1">+</button>
+              </div>
+            </div>
+            <div class="rista-cart-item-bottom">
+              <button class="rista-add-note">💬 Add a note</button>
+              <span><span class="rista-item-total-label">Item Total&nbsp;</span><span class="rista-item-total-value">₹${i.price * i.qty}</span></span>
+            </div>
+          </div>
+        `).join('');
+      }
+      if (footerEl) footerEl.style.display = 'block';
+      renderUpsell(items);
+    }
+  }
+
+  function renderUpsell(cartItems) {
+    if (!menuData) return;
+    const upsellWrap = document.getElementById('upsell-row');
+    const cartSkus = new Set(cartItems.map(i => i.skuCode));
+    const candidates = [];
+    menuData.categories.forEach(cat => (cat.items || []).forEach(item => {
+      if (!cartSkus.has(item.skuCode) && item.available) candidates.push(item);
+    }));
+    const picks = candidates.slice(0, 6);
+    if (picks.length === 0) { document.getElementById('upsell-wrap').style.display = 'none'; return; }
+    document.getElementById('upsell-wrap').style.display = 'block';
+    upsellWrap.innerHTML = picks.map(cardHTML).join('');
+    resetRowScroll(upsellWrap.parentElement);
+  }
+
+  // ── SEARCH ──
+  let searchDebounce;
+  searchInput.addEventListener('input', function() {
+    clearTimeout(searchDebounce);
+    const val = this.value;
+    searchDebounce = setTimeout(() => {
+      searchTerm = val.trim().toLowerCase();
+      if (searchTerm) renderSearchResults(searchTerm);
+    }, 200);
+  });
+
+  // ── PROMO CAROUSEL DOTS ──
+  const promoTrack = document.getElementById('promo-track');
+  if (promoTrack) {
+    const dots = Array.from(document.querySelectorAll('.rista-dot'));
+    if (dots.length) dots[0].classList.add('active');
+    promoTrack.addEventListener('scroll', function() {
+      const idx = Math.round(promoTrack.scrollLeft / promoTrack.clientWidth);
+      dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+    });
+  }
+
+  // ── SKU → SHOPIFY VARIANT ID MAP ──
+  let skuVariantMapPromise = null;
+  function getSkuVariantMap() {
+    if (skuVariantMapPromise) return skuVariantMapPromise;
+    skuVariantMapPromise = (async () => {
+      const map = {};
+      let page = 1;
+      const MAX_PAGES = 20;
+      while (page <= MAX_PAGES) {
+        const res = await fetch(`/products.json?limit=250&page=${page}`);
+        if (!res.ok) break;
+        const data = await res.json();
+        const products = data.products || [];
+        if (products.length === 0) break;
+        products.forEach(p => {
+          const pImg = (p.images && p.images.length > 0) ? p.images[0].src : null;
+          (p.variants || []).forEach(v => {
+            if (v.sku) {
+              map[v.sku] = v.id;
+              const img = v.featured_image ? v.featured_image.src : pImg;
+              if (img) window.skuImageMap[v.sku] = img;
+            }
+          });
+        });
+        if (products.length < 250) break;
+        page++;
+      }
+      return map;
+    })();
+    return skuVariantMapPromise;
+  }
+
+  // ── CHECKOUT ──
+  document.getElementById('checkout-btn').addEventListener('click', async function() {
+    const btn = this;
+    const originalText = btn.textContent;
+    const items = Object.values(cart);
+    if (items.length === 0) return;
+
+    btn.textContent = 'Preparing your order...';
+    btn.disabled = true;
+
+    try {
+      // Clear existing Shopify cart first to avoid stale items from previous sessions
+      await fetch('/cart/clear.js', { method: 'POST' });
+
+      const skuMap = await getSkuVariantMap();
+      const lineItems = [];
+      const unmatched = [];
+      items.forEach(item => {
+        const variantId = skuMap[item.skuCode];
+        if (variantId) lineItems.push({ id: variantId, quantity: item.qty });
+        else unmatched.push(item.name);
+      });
+
+      if (lineItems.length === 0) {
+        throw new Error(
+          `Couldn't find "${unmatched.join('", "')}" in the store catalog. ` +
+          `Make sure each menu item's SKU matches a Shopify product variant's SKU exactly.`
+        );
+      }
+
+      const addRes = await fetch('/cart/add.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: lineItems })
+      });
+
+      if (!addRes.ok) {
+        const errData = await addRes.json().catch(() => ({}));
+        throw new Error(errData.description || errData.message || 'Shopify rejected the cart update.');
+      }
+
+      if (unmatched.length > 0) {
+        console.warn('Skipped items not found in store catalog:', unmatched);
+        alert(`Note: "${unmatched.join('", "')}" couldn't be added (not found in store) — proceeding with the rest.`);
+      }
+
+     // Get referral code from localStorage if available
+      const referralCode = localStorage.getItem('mcc_referral_code');
+      const cartAttributes = {
+        'rista_branch': branchSelect.value,
+        'rista_channel': channelSelect.value
+      };
+      
+      // Add referral code if present
+      if (referralCode) {
+        cartAttributes['referral_code'] = referralCode;
+        console.log('[Checkout] Adding referral code to order:', referralCode);
+      }
+      
+      await fetch('/cart/update.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            attributes: cartAttributes
+        })
+      });
+
+      window.location.href = '/checkout';
+
+    } catch (err) {
+      console.error('Checkout error:', err);
+      btn.textContent = originalText;
+      btn.disabled = false;
+      alert(err.message || 'Something went wrong while checking out. Please try again.');
+    }
+  });
+
+  // ── EVENT DELEGATION for size sheet + simple add + stepper buttons ──
+  // Using delegation on the document so it works for the size sheet appended to the body
+  document.addEventListener('click', function(e) {
+    // Size sheet open button
+    const sheetBtn = e.target.closest('[data-open-sheet]');
+    if (sheetBtn) {
+      e.stopPropagation();
+      openSizeSheet(sheetBtn.dataset.openSheet);
+      return;
+    }
+
+    // Variant quantity stepper button inside size sheet
+    const varQtyBtn = e.target.closest('[data-variant-qty]');
+    if (varQtyBtn) {
+      e.stopPropagation();
+      const varSku = String(varQtyBtn.dataset.variantQty || '');
+      const parentSku = String(varQtyBtn.dataset.parentSku || '');
+      const delta = parseInt(varQtyBtn.dataset.delta || '1', 10);
+      changeQty(varSku, delta);
+
+      const parentItem = window.__menuItems[parentSku] ||
+        (menuData && menuData.categories.flatMap(c => c.items).find(i => String(i.skuCode) === parentSku));
+      if (parentItem) renderSizePills(parentItem);
+      return;
+    }
+
+    // Add variant item button or row click inside size sheet
+    const addVarBtn = e.target.closest('[data-add-variant]');
+    if (addVarBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      
+      // Force maintain button color immediately
+      addVarBtn.style.cssText = 'background:#0a06ff !important;background-color:#0a06ff !important;color:#fff !important;background-image:none !important;border:none !important;padding:8px 20px !important;border-radius:20px !important;font-weight:800 !important;font-size:0.88rem !important;cursor:pointer !important;';
+      
+      const varSku = String(addVarBtn.dataset.addVariant || '');
+      const parentSku = String(addVarBtn.dataset.parentSku || '');
+      const varItem = window.__menuItems[varSku] || {};
+
+      addItem(varSku, varItem.name, varItem.variant, varItem.price, varItem.tax);
+
+      const parentItem = window.__menuItems[parentSku] ||
+        (menuData && menuData.categories.flatMap(c => c.items).find(i => String(i.skuCode) === parentSku));
+      if (parentItem) renderSizePills(parentItem);
+      
+      // Force button color again after re-render
+      requestAnimationFrame(() => {
+        const btns = document.querySelectorAll('[data-add-variant]');
+        btns.forEach(btn => {
+          btn.style.cssText = 'background:#0a06ff !important;background-color:#0a06ff !important;color:#fff !important;background-image:none !important;border:none !important;padding:8px 20px !important;border-radius:20px !important;font-weight:800 !important;font-size:0.88rem !important;cursor:pointer !important;';
+        });
+      });
+      return;
+    }
+
+    // Add simple item button
+    const addSimpleBtn = e.target.closest('[data-add-simple]');
+    if (addSimpleBtn) {
+      e.stopPropagation();
+      addItem(addSimpleBtn.dataset.addSimple);
+      return;
+    }
+
+    // Quantity change button on card
+    const qtyBtn = e.target.closest('[data-qty-change]');
+    if (qtyBtn) {
+      e.stopPropagation();
+      const delta = parseInt(qtyBtn.dataset.delta || '1', 10);
+      changeQty(qtyBtn.dataset.qtyChange, delta);
+      return;
+    }
+
+    // Remove item from cart button
+    const removeBtn = e.target.closest('[data-cart-remove]');
+    if (removeBtn) {
+      e.stopPropagation();
+      const sku = removeBtn.dataset.cartRemove;
+      if (cart[sku]) {
+        changeQty(sku, -cart[sku].qty);
+      }
+      return;
+    }
+
+    // Cart item stepper button
+    const cartStepperBtn = e.target.closest('[data-cart-stepper]');
+    if (cartStepperBtn) {
+      e.stopPropagation();
+      const delta = parseInt(cartStepperBtn.dataset.delta || '1', 10);
+      changeQty(cartStepperBtn.dataset.cartStepper, delta);
+      return;
+    }
+  });
+  if (branchSelect) branchSelect.addEventListener('change', function() { updateChannels(); loadMenu(); });
+  if (channelSelect) channelSelect.addEventListener('change', function() { updateLabels(); loadMenu(); });
+  const hashView = (window.location.hash || '').replace('#', '');
+  const queryView = new URLSearchParams(window.location.search).get('view');
+  const isAccountPath = window.location.pathname.includes('/account') && !window.location.pathname.includes('/account/login') && !window.location.pathname.includes('/account/register');
+  const startView = (views.indexOf(hashView) !== -1) ? hashView : ((views.indexOf(queryView) !== -1) ? queryView : (isAccountPath ? 'account' : 'home'));
+  showView(startView);
+  updateChannels();
+  loadMenu();
+  updateCartUI();
+  applyOffsets();
+  getSkuVariantMap();
+  
+  // ── AGGRESSIVE BUTTON COLOR ENFORCER ──
+  // This watches for any button color changes and forces them back to blue
+  const enforceButtonColors = () => {
+    const addButtons = document.querySelectorAll('[data-add-variant], button[data-add-variant]');
+    addButtons.forEach(btn => {
+      const currentBg = window.getComputedStyle(btn).backgroundColor;
+      const currentColor = window.getComputedStyle(btn).color;
+      // Check if background is not blue or color is not white
+      if (currentBg !== 'rgb(10, 6, 255)' || currentColor !== 'rgb(255, 255, 255)') {
+        btn.style.cssText = 'background:#0a06ff !important;background-color:#0a06ff !important;color:#fff !important;background-image:none !important;border:none !important;padding:8px 20px !important;border-radius:20px !important;font-weight:800 !important;font-size:0.88rem !important;cursor:pointer !important;outline:none !important;';
+      }
+    });
+  };
+  
+  // Run enforcer every 100ms
+  setInterval(enforceButtonColors, 100);
+  
+  // Also enforce on any DOM changes
+  const observer = new MutationObserver(enforceButtonColors);
+  observer.observe(document.body, { 
+    childList: true, 
+    subtree: true, 
+    attributes: true, 
+    attributeFilter: ['style', 'class'] 
+  });
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Rista Online Ordering",
+  "settings": [
+    { "type": "header", "content": "Brand" },
+    { "type": "image_picker", "id": "logo", "label": "Home header logo" },
+    { "type": "text", "id": "brand_name", "label": "Brand name (blue headers)" },
+    { "type": "text", "id": "brand_tagline", "label": "Tagline (blue headers)", "default": "Small Sips. Big Moments." },
+
+    { "type": "header", "content": "Home greeting" },
+    { "type": "text", "id": "location_label", "label": "Location label", "default": "Deliver to" },
+    { "type": "text", "id": "greeting_text", "label": "Greeting text", "default": "Good Morning!" },
+    { "type": "text", "id": "headline_line1", "label": "Headline line 1", "default": "Your perfect coffee," },
+    { "type": "text", "id": "headline_line2", "label": "Headline line 2 (accent color)", "default": "just a tap away." },
+    { "type": "text", "id": "search_placeholder", "label": "Search placeholder text", "default": "Search for coffee, drinks or food..." },
+
+    { "type": "header", "content": "Loyalty" },
+    { "type": "number", "id": "loyalty_points_default", "label": "Fallback points balance shown (demo/default)", "default": 0, "info": "Replace with a real customer metafield/API value when available." },
+    { "type": "number", "id": "points_per_100", "label": "Points earned per ₹100 spent", "default": 7 },
+
+    { "type": "header", "content": "Links" },
+    { "type": "url", "id": "custom_order_page_link", "label": "Custom ordering page URL (e.g. /pages/order)", "info": "Redirects /account directly back to your custom page after login" },
+    { "type": "url", "id": "login_page_link", "label": "Login page link", "info": "Defaults to /account/login" },
+    { "type": "url", "id": "offers_link", "label": "Offers page link (center nav button)" },
+    { "type": "url", "id": "account_page_link", "label": "Account / edit profile link", "info": "Defaults to /account" },
+    { "type": "url", "id": "orders_page_link", "label": "My Orders link", "info": "Defaults to /account" },
+    { "type": "url", "id": "feedback_link", "label": "Feedback link" },
+    { "type": "url", "id": "support_link", "label": "Help & Support link" },
+    { "type": "url", "id": "delete_account_link", "label": "Delete account link" }
+  ],
+  "blocks": [
+    {
+      "type": "promo",
+      "name": "Promo carousel slide",
+      "settings": [
+        { "type": "text", "id": "heading", "label": "Heading", "default": "Cool, Creamy," },
+        { "type": "text", "id": "script_text", "label": "Script/italic line", "default": "Coffee Perfected." },
+        { "type": "text", "id": "subtext", "label": "Subtext", "default": "Beat the heat with our signature iced coffee." },
+        { "type": "text", "id": "cta_text", "label": "Button text", "default": "Order Now" },
+        { "type": "url", "id": "cta_link", "label": "Button link" },
+        { "type": "text", "id": "price_badge", "label": "Price badge text", "default": "STARTING AT ₹149" },
+        { "type": "image_picker", "id": "image", "label": "Product cutout image" },
+        { "type": "color", "id": "bg_start", "label": "Gradient start color", "default": "#0a06ff" },
+        { "type": "color", "id": "bg_end", "label": "Gradient end color", "default": "#05031a" }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Rista Online Ordering",
+      "blocks": [
+        {
+          "type": "promo",
+          "settings": {
+            "heading": "Cool, Creamy,",
+            "script_text": "Coffee Perfected.",
+            "subtext": "Beat the heat with our signature iced coffee.",
+            "cta_text": "Order Now",
+            "price_badge": "STARTING AT ₹149"
+          }
+        }
+      ]
+    }
+  ]
+}
+{% endschema %}

@@ -1,0 +1,755 @@
+{% comment %}
+  Referral/Affiliate Admin Dashboard
+  
+  Manage referral codes and view statistics.
+  Place this on a page accessible only to admin users.
+{% endcomment %}
+
+<div class="referral-admin-dashboard">
+  <div class="admin-header">
+    <h1>🎯 Referral Management</h1>
+    <p class="admin-subtitle">Manage affiliate codes and track performance</p>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="summary-cards">
+    <div class="summary-card">
+      <div class="card-icon">👥</div>
+      <div class="card-content">
+        <h3 id="total-referrals">0</h3>
+        <p>Active Referrals</p>
+      </div>
+    </div>
+    <div class="summary-card">
+      <div class="card-icon">🛍️</div>
+      <div class="card-content">
+        <h3 id="total-orders">0</h3>
+        <p>Total Orders</p>
+      </div>
+    </div>
+    <div class="summary-card">
+      <div class="card-icon">💰</div>
+      <div class="card-content">
+        <h3 id="total-revenue">₹0</h3>
+        <p>Total Revenue</p>
+      </div>
+    </div>
+    <div class="summary-card">
+      <div class="card-icon">💵</div>
+      <div class="card-content">
+        <h3 id="total-commission">₹0</h3>
+        <p>Total Commission</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create New Referral -->
+  <div class="admin-section">
+    <div class="section-header">
+      <h2>➕ Create New Referral Code</h2>
+      <button class="btn-secondary" id="toggle-create-form">New Code</button>
+    </div>
+    
+    <div class="create-form" id="create-form" style="display:none;">
+      <form id="new-referral-form">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="ref-name">Name *</label>
+            <input type="text" id="ref-name" required placeholder="e.g., John Doe">
+          </div>
+          
+          <div class="form-group">
+            <label for="ref-email">Email *</label>
+            <input type="email" id="ref-email" required placeholder="john@example.com">
+          </div>
+          
+          <div class="form-group">
+            <label for="ref-type">Type *</label>
+            <select id="ref-type" required>
+              <option value="">Select type...</option>
+              <option value="staff">Staff</option>
+              <option value="partner">Corporate Partner</option>
+              <option value="influencer">Influencer</option>
+              <option value="customer">Customer</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="ref-commission">Commission % *</label>
+            <input type="number" id="ref-commission" required min="0" max="100" step="0.1" placeholder="e.g., 5">
+          </div>
+          
+          <div class="form-group">
+            <label for="ref-code">Code (optional)</label>
+            <input type="text" id="ref-code" placeholder="Auto-generated if empty" pattern="[A-Za-z0-9]+" maxlength="10">
+          </div>
+        </div>
+        
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Create Referral Code</button>
+          <button type="button" class="btn-secondary" id="cancel-create">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Referral List -->
+  <div class="admin-section">
+    <div class="section-header">
+      <h2>📋 All Referral Codes</h2>
+      <input type="search" id="search-referrals" placeholder="Search by name or code...">
+    </div>
+    
+    <div class="referral-list" id="referral-list">
+      <p class="loading">Loading referrals...</p>
+    </div>
+  </div>
+
+  <!-- Referral Details Modal -->
+  <div class="modal" id="referral-modal" style="display:none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modal-title">Referral Details</h2>
+        <button class="modal-close" id="close-modal">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .referral-admin-dashboard {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  
+  .admin-header {
+    margin-bottom: 32px;
+  }
+  
+  .admin-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: #111;
+  }
+  
+  .admin-subtitle {
+    color: #666;
+    margin: 0;
+  }
+  
+  .summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  
+  .summary-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 24px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  }
+  
+  .card-icon {
+    font-size: 2.5rem;
+    opacity: 0.9;
+  }
+  
+  .card-content h3 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 0 0 4px;
+  }
+  
+  .card-content p {
+    margin: 0;
+    opacity: 0.9;
+    font-size: 0.875rem;
+  }
+  
+  .admin-section {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  
+  .section-header h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+  }
+  
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  
+  .form-group {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .form-group label {
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: #333;
+    font-size: 0.875rem;
+  }
+  
+  .form-group input,
+  .form-group select {
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    transition: border-color 0.2s;
+  }
+  
+  .form-group input:focus,
+  .form-group select:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+  
+  .form-actions {
+    display: flex;
+    gap: 12px;
+  }
+  
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.875rem;
+  }
+  
+  .btn-primary {
+    background: #667eea;
+    color: white;
+  }
+  
+  .btn-primary:hover {
+    background: #5568d3;
+  }
+  
+  .btn-secondary {
+    background: #e2e8f0;
+    color: #333;
+  }
+  
+  .btn-secondary:hover {
+    background: #cbd5e0;
+  }
+  
+  .btn-danger {
+    background: #ef4444;
+    color: white;
+  }
+  
+  .btn-danger:hover {
+    background: #dc2626;
+  }
+  
+  #search-referrals {
+    padding: 8px 14px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    width: 300px;
+    font-size: 0.875rem;
+  }
+  
+  .referral-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .referral-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s;
+  }
+  
+  .referral-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102,126,234,0.1);
+  }
+  
+  .referral-info {
+    flex: 1;
+  }
+  
+  .referral-code {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #667eea;
+    margin-bottom: 4px;
+  }
+  
+  .referral-name {
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 4px;
+  }
+  
+  .referral-meta {
+    display: flex;
+    gap: 16px;
+    font-size: 0.75rem;
+    color: #666;
+  }
+  
+  .referral-stats {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+  }
+  
+  .stat {
+    text-align: center;
+  }
+  
+  .stat-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #333;
+  }
+  
+  .stat-label {
+    font-size: 0.75rem;
+    color: #666;
+  }
+  
+  .referral-actions {
+    display: flex;
+    gap: 8px;
+  }
+  
+  .modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+  }
+  
+  .modal-content {
+    background: white;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow: auto;
+  }
+  
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  
+  .modal-header h2 {
+    margin: 0;
+  }
+  
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #666;
+  }
+  
+  .modal-body {
+    padding: 20px;
+  }
+  
+  .loading {
+    text-align: center;
+    color: #666;
+    padding: 40px;
+  }
+  
+  .success-message,
+  .error-message {
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    font-size: 0.875rem;
+  }
+  
+  .success-message {
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #10b981;
+  }
+  
+  .error-message {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #ef4444;
+  }
+  
+  .copy-link-btn {
+    padding: 6px 12px;
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: all 0.2s;
+  }
+  
+  .copy-link-btn:hover {
+    background: #e5e7eb;
+  }
+  
+  .badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  
+  .badge-active {
+    background: #d1fae5;
+    color: #065f46;
+  }
+  
+  .badge-inactive {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+</style>
+
+<script>
+(function() {
+  'use strict';
+  
+  const API_BASE = 'https://mycoffeeco-middleware-original.onrender.com/api/referrals';
+  
+  const AdminDashboard = {
+    
+    init() {
+      this.bindEvents();
+      this.loadSummary();
+      this.loadReferrals();
+    },
+    
+    bindEvents() {
+      document.getElementById('toggle-create-form').addEventListener('click', () => {
+        const form = document.getElementById('create-form');
+        form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      });
+      
+      document.getElementById('cancel-create').addEventListener('click', () => {
+        document.getElementById('create-form').style.display = 'none';
+        document.getElementById('new-referral-form').reset();
+      });
+      
+      document.getElementById('new-referral-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.createReferral();
+      });
+      
+      document.getElementById('close-modal').addEventListener('click', () => {
+        document.getElementById('referral-modal').style.display = 'none';
+      });
+      
+      document.getElementById('search-referrals').addEventListener('input', (e) => {
+        this.filterReferrals(e.target.value);
+      });
+    },
+    
+    async loadSummary() {
+      try {
+        const response = await fetch(API_BASE);
+        const data = await response.json();
+        
+        if (data.success) {
+          const totalOrders = data.referrals.reduce((sum, r) => sum + r.totalOrders, 0);
+          const totalRevenue = data.referrals.reduce((sum, r) => sum + r.totalRevenue, 0);
+          const totalCommission = data.referrals.reduce((sum, r) => sum + (r.totalRevenue * r.commission / 100), 0);
+          
+          document.getElementById('total-referrals').textContent = data.count;
+          document.getElementById('total-orders').textContent = totalOrders;
+          document.getElementById('total-revenue').textContent = '₹' + totalRevenue.toFixed(0);
+          document.getElementById('total-commission').textContent = '₹' + totalCommission.toFixed(0);
+        }
+      } catch (err) {
+        console.error('Failed to load summary:', err);
+      }
+    },
+    
+    async loadReferrals() {
+      const list = document.getElementById('referral-list');
+      list.innerHTML = '<p class="loading">Loading referrals...</p>';
+      
+      try {
+        const response = await fetch(API_BASE);
+        const data = await response.json();
+        
+        if (data.success) {
+          this.renderReferrals(data.referrals);
+        } else {
+          list.innerHTML = '<p class="error-message">Failed to load referrals</p>';
+        }
+      } catch (err) {
+        list.innerHTML = '<p class="error-message">Error: ' + err.message + '</p>';
+      }
+    },
+    
+    renderReferrals(referrals) {
+      const list = document.getElementById('referral-list');
+      
+      if (referrals.length === 0) {
+        list.innerHTML = '<p class="loading">No referrals yet. Create your first one!</p>';
+        return;
+      }
+      
+      list.innerHTML = referrals.map(ref => `
+        <div class="referral-card" data-code="${ref.code}">
+          <div class="referral-info">
+            <div class="referral-code">${ref.code}</div>
+            <div class="referral-name">${ref.name} (${ref.email})</div>
+            <div class="referral-meta">
+              <span>Type: <strong>${ref.type}</strong></span>
+              <span>Commission: <strong>${ref.commission}%</strong></span>
+              <span class="badge ${ref.active ? 'badge-active' : 'badge-inactive'}">${ref.active ? 'Active' : 'Inactive'}</span>
+            </div>
+          </div>
+          <div class="referral-stats">
+            <div class="stat">
+              <div class="stat-value">${ref.totalOrders}</div>
+              <div class="stat-label">Orders</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value">₹${ref.totalRevenue.toFixed(0)}</div>
+              <div class="stat-label">Revenue</div>
+            </div>
+          </div>
+          <div class="referral-actions">
+            <button class="btn-secondary copy-link-btn" data-link="${ref.referralLink}">📋 Copy Link</button>
+            <button class="btn-primary" onclick="AdminDashboard.viewDetails('${ref.code}')">View Details</button>
+            <button class="btn-danger" onclick="AdminDashboard.deleteReferral('${ref.code}')">Delete</button>
+          </div>
+        </div>
+      `).join('');
+      
+      // Bind copy buttons
+      document.querySelectorAll('.copy-link-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const link = e.currentTarget.dataset.link;
+          navigator.clipboard.writeText(link);
+          e.currentTarget.textContent = '✓ Copied!';
+          setTimeout(() => {
+            e.currentTarget.textContent = '📋 Copy Link';
+          }, 2000);
+        });
+      });
+    },
+    
+    async createReferral() {
+      const formData = {
+        name: document.getElementById('ref-name').value,
+        email: document.getElementById('ref-email').value,
+        type: document.getElementById('ref-type').value,
+        commission: parseFloat(document.getElementById('ref-commission').value),
+        code: document.getElementById('ref-code').value || undefined
+      };
+      
+      try {
+        const response = await fetch(API_BASE, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert(`✅ Referral code created: ${data.referral.code}\n\nLink: ${data.referral.referralLink}`);
+          document.getElementById('create-form').style.display = 'none';
+          document.getElementById('new-referral-form').reset();
+          this.loadSummary();
+          this.loadReferrals();
+        } else {
+          alert('❌ Error: ' + data.message);
+        }
+      } catch (err) {
+        alert('❌ Error: ' + err.message);
+      }
+    },
+    
+    async viewDetails(code) {
+      const modal = document.getElementById('referral-modal');
+      const body = document.getElementById('modal-body');
+      
+      body.innerHTML = '<p class="loading">Loading details...</p>';
+      modal.style.display = 'flex';
+      
+      try {
+        const response = await fetch(`${API_BASE}/${code}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          const stats = data.stats;
+          body.innerHTML = `
+            <div style="margin-bottom: 24px;">
+              <h3>${stats.code} - ${stats.name}</h3>
+              <p><strong>Type:</strong> ${stats.type} | <strong>Commission:</strong> ${stats.commission}%</p>
+              <p><strong>Referral Link:</strong><br>
+              <input type="text" value="${stats.referralLink}" readonly style="width:100%;padding:8px;margin-top:4px;border:1px solid #ddd;border-radius:4px;">
+              </p>
+            </div>
+            
+            <div class="summary-cards" style="grid-template-columns: repeat(3, 1fr);margin-bottom:24px;">
+              <div class="summary-card">
+                <div class="card-icon">🛍️</div>
+                <div class="card-content">
+                  <h3>${stats.totalOrders}</h3>
+                  <p>Orders</p>
+                </div>
+              </div>
+              <div class="summary-card">
+                <div class="card-icon">💰</div>
+                <div class="card-content">
+                  <h3>₹${stats.totalRevenue.toFixed(0)}</h3>
+                  <p>Revenue</p>
+                </div>
+              </div>
+              <div class="summary-card">
+                <div class="card-icon">💵</div>
+                <div class="card-content">
+                  <h3>₹${stats.totalCommission.toFixed(0)}</h3>
+                  <p>Commission</p>
+                </div>
+              </div>
+            </div>
+            
+            <h4>Recent Orders</h4>
+            ${stats.orders.length > 0 ? `
+              <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                  <tr style="border-bottom:2px solid #e2e8f0;">
+                    <th style="text-align:left;padding:8px;">Invoice</th>
+                    <th style="text-align:right;padding:8px;">Amount</th>
+                    <th style="text-align:right;padding:8px;">Commission</th>
+                    <th style="text-align:left;padding:8px;">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${stats.orders.slice(0, 10).map(order => `
+                    <tr style="border-bottom:1px solid #f3f4f6;">
+                      <td style="padding:8px;">${order.invoiceNumber}</td>
+                      <td style="text-align:right;padding:8px;">₹${order.amount.toFixed(0)}</td>
+                      <td style="text-align:right;padding:8px;">₹${order.commission.toFixed(2)}</td>
+                      <td style="padding:8px;">${new Date(order.timestamp).toLocaleDateString()}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            ` : '<p>No orders yet.</p>'}
+            
+            <div style="margin-top:20px;">
+              <a href="${API_BASE}/${code}/export" class="btn-primary" download>📥 Export CSV</a>
+            </div>
+          `;
+        } else {
+          body.innerHTML = '<p class="error-message">Failed to load details</p>';
+        }
+      } catch (err) {
+        body.innerHTML = '<p class="error-message">Error: ' + err.message + '</p>';
+      }
+    },
+    
+    async deleteReferral(code) {
+      if (!confirm(`Are you sure you want to delete referral code ${code}?`)) return;
+      
+      try {
+        const response = await fetch(`${API_BASE}/${code}`, { method: 'DELETE' });
+        const data = await response.json();
+        
+        if (data.success) {
+          alert('✅ Referral deleted');
+          this.loadSummary();
+          this.loadReferrals();
+        } else {
+          alert('❌ Error: ' + data.message);
+        }
+      } catch (err) {
+        alert('❌ Error: ' + err.message);
+      }
+    },
+    
+    filterReferrals(query) {
+      const cards = document.querySelectorAll('.referral-card');
+      const lowerQuery = query.toLowerCase();
+      
+      cards.forEach(card => {
+        const text = card.textContent.toLowerCase();
+        card.style.display = text.includes(lowerQuery) ? 'flex' : 'none';
+      });
+    }
+  };
+  
+  // Initialize on page load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => AdminDashboard.init());
+  } else {
+    AdminDashboard.init();
+  }
+  
+  // Expose globally
+  window.AdminDashboard = AdminDashboard;
+  
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Referral Admin",
+  "settings": [],
+  "presets": [
+    {
+      "name": "Referral Admin"
+    }
+  ]
+}
+{% endschema %}
