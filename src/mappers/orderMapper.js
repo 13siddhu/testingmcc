@@ -184,10 +184,10 @@ exports.mapShopifyOrderToRista = (shopifyOrder, ristaCustomerId = "") => {
                 item.sku || "",
 
             shortName:
-                item.title,
+                item.shortName || item.name || item.title || "Coffee Item",
 
             longName:
-                item.title,
+                item.longName || item.name || item.title || "Coffee Item",
 
             variants:
                 item.variant_title || "",
