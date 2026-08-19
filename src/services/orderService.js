@@ -58,33 +58,18 @@ exports.createOrder = async (shopifyOrder) => {
     const uniqueId = `sale_${orderId}`;
 
     console.log(`Sending to Rista POST /sale (uniqueId: ${uniqueId})`);
-    console.log("Branch:", payload.branchCode);
-    console.log("Channel:", payload.channel);
-    console.log("Items count:", payload.items?.length);
-    console.log("Total:", payload.totalAmount);
-    console.log("Customer ID in payload:", payload.customer?.id || "(none)");
+    console.log("Full Rista Payload:", JSON.stringify(payload, null, 2));
 
-    let result;
-    try {
-        result = await ristaClient.post(
-            "/sale",
-            payload,
-            uniqueId
-        );
-    } catch (err) {
-        if (err.message.includes("404") || err.message.includes("403")) {
-            console.log("Retrying with /enterprise/sale endpoint...");
-            result = await ristaClient.post(
-                "/enterprise/sale",
-                payload,
-                uniqueId
-            );
-        } else {
-            throw err;
-        }
-    }
+    const result = await ristaClient.post(
+        "/sale",
+        payload,
+        uniqueId
+    );
 
     // Track order with referral if code is valid
+    const referralCode = (shopifyOrder.note_attributes || [])
+        .find(attr => attr.name === 'referral_code')?.value;
+
     if (referralCode && referralStore.isValidReferral(referralCode)) {
         try {
             const trackingData = {

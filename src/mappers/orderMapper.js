@@ -59,23 +59,23 @@ exports.mapShopifyOrderToRista = (shopifyOrder, ristaCustomerId = "") => {
 
         sourceInfo: {
 
-            companyName: process.env.COMPANY_NAME,
+            companyName: process.env.COMPANY_NAME || "My Coffee Co",
 
-            source: "Shopify",
+            source: "MobileApp",
 
-            invoiceNumber: shopifyOrder.name,
+            invoiceNumber: shopifyOrder.name || `MCC-${shopifyOrder.order_number || Date.now()}`,
 
-            orderTransactionId: String(shopifyOrder.id),
+            orderTransactionId: String(shopifyOrder.id || shopifyOrder.order_number || Date.now()),
 
             invoiceDate:
-                shopifyOrder.created_at,
+                shopifyOrder.created_at || new Date().toISOString(),
 
             callbackURL:
-                process.env.SHOPIFY_CALLBACK_URL || "",
+                process.env.PUBLIC_URL || "https://testingmcc.vercel.app",
 
-            isEditable: true,
+            isEditable: false,
 
-            verifyCoupons: true,
+            verifyCoupons: false,
 
             isEcomOrder: true
 
@@ -167,11 +167,16 @@ exports.mapShopifyOrderToRista = (shopifyOrder, ristaCustomerId = "") => {
         //----------------------------------------------------
 
         // Use "Takeaway" as the default channel for Shopify online orders.
-        // Change to "Delivery" if you want delivery orders routed differently.
         channel: (() => {
             const attrs = shopifyOrder.note_attributes || [];
             const channelAttr = attrs.find(a => a.name === 'rista_channel');
-            return channelAttr ? channelAttr.value : (process.env.SHOPIFY_RISTA_CHANNEL || 'Takeaway');
+            const rawVal = channelAttr ? channelAttr.value : (process.env.SHOPIFY_RISTA_CHANNEL || 'Takeaway');
+            if (!rawVal) return 'Takeaway';
+            const lower = rawVal.toLowerCase();
+            if (lower === 'takeaway') return 'Takeaway';
+            if (lower === 'dinein' || lower === 'dine-in') return 'Dinein';
+            if (lower === 'delivery') return 'Delivery';
+            return rawVal.charAt(0).toUpperCase() + rawVal.slice(1);
         })(),
 
         //----------------------------------------------------
@@ -181,7 +186,7 @@ exports.mapShopifyOrderToRista = (shopifyOrder, ristaCustomerId = "") => {
         items: shopifyOrder.line_items.map(item => ({
 
             skuCode:
-                item.sku || "",
+                item.skuCode || item.sku || "225",
 
             shortName:
                 item.shortName || item.name || item.title || "Coffee Item",
@@ -190,23 +195,21 @@ exports.mapShopifyOrderToRista = (shopifyOrder, ristaCustomerId = "") => {
                 item.longName || item.name || item.title || "Coffee Item",
 
             variants:
-                item.variant_title || "",
+                item.variants || item.variant || item.variant_title || "Regular",
 
             quantity:
-                Number(item.quantity),
+                Number(item.quantity || item.qty || 1),
 
             unitPrice:
-                Number(item.price),
+                Number(item.price || 0),
 
             itemNature: "Goods",
 
             itemAmount:
-                Number(item.price) *
-                Number(item.quantity),
+                Number(item.price || 0) * Number(item.quantity || item.qty || 1),
 
             itemTotalAmount:
-                Number(item.price) *
-                Number(item.quantity),
+                Number(item.price || 0) * Number(item.quantity || item.qty || 1),
 
             note:
                 item.note || "",
@@ -266,7 +269,7 @@ exports.mapShopifyOrderToRista = (shopifyOrder, ristaCustomerId = "") => {
         //----------------------------------------------------
 
         itemTotalAmount:
-            Number(shopifyOrder.subtotal_price || 0),
+            Number(shopifyOrder.subtotal_price || shopifyOrder.total_price || 0),
 
         ...(Number(shopifyOrder.total_discounts || 0) > 0 && {
             discountAmount: -Math.abs(Number(shopifyOrder.total_discounts))
@@ -385,14 +388,15 @@ exports.mapShopifyOrderToRista = (shopifyOrder, ristaCustomerId = "") => {
                 })(),
 
                 amount:
-                    Number(shopifyOrder.total_price),
+                    Number(shopifyOrder.total_price || 0),
 
                 reference:
-                    String(shopifyOrder.id),
+                    String(shopifyOrder.id || shopifyOrder.order_number || Date.now()),
 
                 postedDate:
                     shopifyOrder.processed_at ||
-                    shopifyOrder.created_at
+                    shopifyOrder.created_at ||
+                    new Date().toISOString()
 
             }
 
