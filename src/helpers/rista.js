@@ -1,24 +1,7 @@
 const jwt = require("jsonwebtoken");
 
-/**
- * Normalizes Rista Base URL to ensure path prefix is correctly formatted without duplication.
- */
-function getRistaUrl(path) {
-    let baseUrl = (process.env.RISTA_BASE_URL || "https://api.ristaapps.com/v1").replace(/\/+$/, "");
-    const cleanPath = path.startsWith("/") ? path : `/${path}`;
-
-    // If path already contains /catalog/enterprise, /enterprise, or /loyalty, do not duplicate /enterprise
-    if (cleanPath.startsWith("/catalog/enterprise") || cleanPath.startsWith("/enterprise") || cleanPath.startsWith("/loyalty")) {
-        const baseWithoutEnterprise = baseUrl.replace(/\/enterprise$/, "");
-        return `${baseWithoutEnterprise}${cleanPath}`;
-    }
-
-    if (!baseUrl.endsWith("/enterprise")) {
-        return `${baseUrl}/enterprise${cleanPath}`;
-    }
-
-    return `${baseUrl}${cleanPath}`;
-}
+const BASE_URL = process.env.RISTA_BASE_URL;
+console.log("[rista.js] BASE_URL on startup:", BASE_URL);
 
 /**
  * Generate JWT token for Rista API
@@ -56,8 +39,7 @@ function ristaHeaders(isWrite = false, uniqueId = null) {
  * GET helper
  */
 async function ristaGet(path) {
-    const url = getRistaUrl(path);
-    const response = await fetch(url, {
+    const response = await fetch(`${BASE_URL}${path}`, {
         method: "GET",
         headers: ristaHeaders()
     });
@@ -80,8 +62,7 @@ async function ristaGet(path) {
  * POST helper
  */
 async function ristaPost(path, body, uniqueId) {
-    const url = getRistaUrl(path);
-    const response = await fetch(url, {
+    const response = await fetch(`${BASE_URL}${path}`, {
         method: "POST",
         headers: ristaHeaders(true, uniqueId),
         body: JSON.stringify(body)
