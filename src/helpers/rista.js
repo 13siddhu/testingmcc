@@ -1,7 +1,16 @@
 const jwt = require("jsonwebtoken");
 
-const BASE_URL = process.env.RISTA_BASE_URL;
-console.log("[rista.js] BASE_URL on startup:", BASE_URL);
+/**
+ * Normalizes Rista Base URL to ensure /enterprise path prefix is always included.
+ */
+function getRistaUrl(path) {
+    let baseUrl = (process.env.RISTA_BASE_URL || "https://api.ristaapps.com/v1").replace(/\/+$/, "");
+    if (!baseUrl.endsWith("/enterprise")) {
+        baseUrl += "/enterprise";
+    }
+    const cleanPath = path.startsWith("/") ? path : `/${path}`;
+    return `${baseUrl}${cleanPath}`;
+}
 
 /**
  * Generate JWT token for Rista API
@@ -39,7 +48,8 @@ function ristaHeaders(isWrite = false, uniqueId = null) {
  * GET helper
  */
 async function ristaGet(path) {
-    const response = await fetch(`${BASE_URL}${path}`, {
+    const url = getRistaUrl(path);
+    const response = await fetch(url, {
         method: "GET",
         headers: ristaHeaders()
     });
@@ -62,7 +72,8 @@ async function ristaGet(path) {
  * POST helper
  */
 async function ristaPost(path, body, uniqueId) {
-    const response = await fetch(`${BASE_URL}${path}`, {
+    const url = getRistaUrl(path);
+    const response = await fetch(url, {
         method: "POST",
         headers: ristaHeaders(true, uniqueId),
         body: JSON.stringify(body)
