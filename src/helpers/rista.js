@@ -32,7 +32,6 @@ function ristaHeaders(isWrite = false, uniqueId = null) {
     return {
         "x-api-key": process.env.RISTA_API_KEY,
         "x-api-token": token,
-        "Authorization": `Bearer ${token}`,
         "Content-Type": "application/json"
     };
 }
