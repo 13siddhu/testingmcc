@@ -28,9 +28,11 @@ function generateToken(isWrite = false, uniqueId = null) {
  * Common headers for Rista requests
  */
 function ristaHeaders(isWrite = false, uniqueId = null) {
+    const token = generateToken(isWrite, uniqueId);
     return {
         "x-api-key": process.env.RISTA_API_KEY,
-        "x-api-token": generateToken(isWrite, uniqueId),
+        "x-api-token": token,
+        "Authorization": `Bearer ${token}`,
         "Content-Type": "application/json"
     };
 }
