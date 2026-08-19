@@ -20,11 +20,10 @@ function debugWebhook(req, res, next) {
     next();
 }
 
-// express.raw() captures the raw body buffer needed for HMAC verification
+// POST / or POST /create (Direct Mobile App / Webhook Order Creation)
+router.post("/", orderController.createOrder);
+
 router.post("/create",
-    express.raw({ type: "application/json" }),
-    debugWebhook,
-    verifyShopify,
     orderController.createOrder
 );
 
