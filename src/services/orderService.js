@@ -54,21 +54,30 @@ exports.createOrder = async (shopifyOrder) => {
 
     const payload = mapShopifyOrderToRista(shopifyOrder, ristaCustomerId);
 
-    console.log("Sending to Rista POST /enterprise/sale");
+    const orderId = shopifyOrder.id || shopifyOrder.order_number || Date.now();
+    const uniqueId = `sale_${orderId}`;
+
+    console.log(`Sending to Rista POST /sale (uniqueId: ${uniqueId})`);
+    console.log("Branch:", payload.branchCode);
+    console.log("Channel:", payload.channel);
+    console.log("Items count:", payload.items?.length);
+    console.log("Total:", payload.totalAmount);
+    console.log("Customer ID in payload:", payload.customer?.id || "(none)");
+
     let result;
     try {
         result = await ristaClient.post(
-            "/enterprise/sale",
+            "/sale",
             payload,
-            `sale_${shopifyOrder.id}`
+            uniqueId
         );
     } catch (err) {
-        if (err.message.includes("404")) {
-            console.log("Retrying with /sale endpoint...");
+        if (err.message.includes("404") || err.message.includes("403")) {
+            console.log("Retrying with /enterprise/sale endpoint...");
             result = await ristaClient.post(
-                "/sale",
+                "/enterprise/sale",
                 payload,
-                `sale_${shopifyOrder.id}`
+                uniqueId
             );
         } else {
             throw err;
