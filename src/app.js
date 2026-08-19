@@ -46,11 +46,14 @@ app.get("/ping", (_req, res) => {
 });
 
 app.use("/customers",    customerRoutes);
+app.use("/api/customers", customerRoutes);
 app.use("/loyalty",      loyaltyRoutes);
 app.use("/orders",       orderRoutes);
+app.use("/api/orders",   orderRoutes);
 app.use("/api/menu",     menuRoutes);
 app.use("/shopify",      shopifyRoutes);
 app.use("/auth",         authRoutes);
+app.use("/api/auth",     authRoutes);
 app.use("/direct-order", directOrderRoutes);
 app.use("/api/referrals", referralRoutes);
 app.use("/api/payment",   paymentRoutes);

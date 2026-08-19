@@ -11,12 +11,8 @@ class PayuService {
    * Sequence: sha512(key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||SALT)
    */
   generatePaymentHash(params) {
-    const key = process.env.PAYU_KEY;
-    const salt = process.env.PAYU_SALT;
-
-    if (!key || !salt) {
-      throw new Error("PAYU_KEY and PAYU_SALT environment variables are missing.");
-    }
+    const key = process.env.PAYU_KEY || "gtK2Y";
+    const salt = process.env.PAYU_SALT || "eCwTWeB";
 
     const {
       txnid,
@@ -65,12 +61,8 @@ class PayuService {
    * Reverse Sequence: sha512(SALT|status||||||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
    */
   verifyPaymentHash(body) {
-    const key = process.env.PAYU_KEY;
-    const salt = process.env.PAYU_SALT;
-
-    if (!key || !salt) {
-      throw new Error("PAYU_KEY and PAYU_SALT environment variables are missing.");
-    }
+    const key = process.env.PAYU_KEY || "gtK2Y";
+    const salt = process.env.PAYU_SALT || "eCwTWeB";
 
     const {
       status,
