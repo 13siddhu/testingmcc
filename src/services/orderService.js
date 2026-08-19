@@ -54,26 +54,26 @@ exports.createOrder = async (shopifyOrder) => {
 
     const payload = mapShopifyOrderToRista(shopifyOrder, ristaCustomerId);
 
-    console.log("Sending to Rista POST /sale");
-    console.log("Branch:", payload.branchCode);
-    console.log("Channel:", payload.channel);
-    console.log("Items count:", payload.items?.length);
-    console.log("Total:", payload.totalAmount);
-    console.log("Customer ID in payload:", payload.customer?.id || "(none)");
-
-    // Check for referral code in note_attributes
-    const referralCode = (shopifyOrder.note_attributes || [])
-        .find(attr => attr.name === 'referral_code')?.value;
-
-    if (referralCode) {
-        console.log(`[orderService] Referral code detected: ${referralCode}`);
+    console.log("Sending to Rista POST /enterprise/sale");
+    let result;
+    try {
+        result = await ristaClient.post(
+            "/enterprise/sale",
+            payload,
+            `sale_${shopifyOrder.id}`
+        );
+    } catch (err) {
+        if (err.message.includes("404")) {
+            console.log("Retrying with /sale endpoint...");
+            result = await ristaClient.post(
+                "/sale",
+                payload,
+                `sale_${shopifyOrder.id}`
+            );
+        } else {
+            throw err;
+        }
     }
-
-    const result = await ristaClient.post(
-        "/sale",
-        payload,
-        `sale_${shopifyOrder.id}`
-    );
 
     // Track order with referral if code is valid
     if (referralCode && referralStore.isValidReferral(referralCode)) {
