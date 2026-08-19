@@ -1,14 +1,22 @@
 const jwt = require("jsonwebtoken");
 
 /**
- * Normalizes Rista Base URL to ensure /enterprise path prefix is always included.
+ * Normalizes Rista Base URL to ensure path prefix is correctly formatted without duplication.
  */
 function getRistaUrl(path) {
     let baseUrl = (process.env.RISTA_BASE_URL || "https://api.ristaapps.com/v1").replace(/\/+$/, "");
-    if (!baseUrl.endsWith("/enterprise")) {
-        baseUrl += "/enterprise";
-    }
     const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
+    // If path already contains /catalog/enterprise, /enterprise, or /loyalty, do not duplicate /enterprise
+    if (cleanPath.startsWith("/catalog/enterprise") || cleanPath.startsWith("/enterprise") || cleanPath.startsWith("/loyalty")) {
+        const baseWithoutEnterprise = baseUrl.replace(/\/enterprise$/, "");
+        return `${baseWithoutEnterprise}${cleanPath}`;
+    }
+
+    if (!baseUrl.endsWith("/enterprise")) {
+        return `${baseUrl}/enterprise${cleanPath}`;
+    }
+
     return `${baseUrl}${cleanPath}`;
 }
 
