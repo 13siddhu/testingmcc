@@ -40,7 +40,7 @@ class PayuService {
       ? "https://secure.payu.in/_payment"
       : "https://test.payu.in/_payment";
 
-    const publicUrl = process.env.PUBLIC_URL || "https://mycoffeeco-middleware-original.onrender.com";
+    const publicUrl = process.env.PUBLIC_URL || "https://testingmcc.vercel.app";
     const surl = process.env.PAYU_SURL || `${publicUrl}/api/payment/payu-response`;
     const furl = process.env.PAYU_FURL || `${publicUrl}/api/payment/payu-response`;
 
