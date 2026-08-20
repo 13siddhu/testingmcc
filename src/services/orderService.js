@@ -97,8 +97,109 @@ exports.createOrder = async (shopifyOrder) => {
         }
     }
 
+    // Save created order into persistent user order store
+    const rawPhone = shopifyOrder.customer?.phone || shopifyOrder.phone || shopifyOrder.shipping_address?.phone || "";
+    const cleanPhone = rawPhone.replace(/^\+?91/, "").replace(/\D/g, "").slice(-10);
+    if (cleanPhone) {
+        const store = loadUserOrdersFile();
+        if (!store[cleanPhone]) {
+            store[cleanPhone] = [];
+        }
+        store[cleanPhone].unshift({
+            id: result.invoiceNumber || `MCC-${orderId}`,
+            orderNumber: result.invoiceNumber || `MCC-${orderId}`,
+            status: result.status || "Open",
+            statusText: "Order Received & Brewing",
+            stage: 1,
+            location: payload.branchCode === "HO" ? "Head office" : payload.branchCode,
+            items: payload.items || [],
+            totalAmount: payload.totalAmount,
+            total_price: payload.totalAmount,
+            date: new Date().toISOString(),
+            url: result.url || null
+        });
+        saveUserOrdersFile(store);
+    }
+
     return result;
 
+};
+
+const fs = require("fs");
+const path = require("path");
+const ORDERS_FILE = path.join(__dirname, "../../data/user_orders.json");
+
+function loadUserOrdersFile() {
+    try {
+        if (fs.existsSync(ORDERS_FILE)) {
+            const data = fs.readFileSync(ORDERS_FILE, "utf8");
+            return JSON.parse(data || "{}");
+        }
+    } catch (e) {
+        console.warn("Failed to load user_orders.json:", e.message);
+    }
+    return {};
+}
+
+function saveUserOrdersFile(storeObj) {
+    try {
+        const dir = path.dirname(ORDERS_FILE);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(ORDERS_FILE, JSON.stringify(storeObj, null, 2), "utf8");
+    } catch (e) {
+        console.warn("Failed to save user_orders.json:", e.message);
+    }
+}
+
+/**
+ * Fetch all orders for a customer by phone number.
+ * Called from GET /orders/user/:phone
+ */
+exports.getUserOrders = async (phone) => {
+    const cleanPhone = (phone || "").replace(/^\+?91/, "").replace(/\D/g, "").slice(-10);
+    const store = loadUserOrdersFile();
+    return store[cleanPhone] || [];
+};
+
+/**
+ * Update status of an order in user_orders.json when Rista POS triggers callback
+ */
+exports.updateOrderStatusByInvoice = async (invoiceNumber, newStatus) => {
+    if (!invoiceNumber || !newStatus) return false;
+    const store = loadUserOrdersFile();
+    let updated = false;
+
+    for (const phone in store) {
+        const userOrders = store[phone];
+        for (const order of userOrders) {
+            if (String(order.id) === String(invoiceNumber) || String(order.orderNumber) === String(invoiceNumber)) {
+                order.status = newStatus;
+                const lower = newStatus.toLowerCase();
+                if (lower.includes("prep") || lower.includes("accept")) {
+                    order.statusText = "Barista is Brewing Your Order";
+                    order.stage = 2;
+                } else if (lower.includes("ready") || lower.includes("dispatch")) {
+                    order.statusText = "☕ Ready for Pickup at Counter!";
+                    order.stage = 3;
+                } else if (lower.includes("comp")) {
+                    order.statusText = "Order Completed";
+                    order.stage = 4;
+                } else {
+                    order.statusText = `Status: ${newStatus}`;
+                }
+                updated = true;
+                break;
+            }
+        }
+    }
+
+    if (updated) {
+        saveUserOrdersFile(store);
+        console.log(`[orderService] Updated status for Invoice #${invoiceNumber} to "${newStatus}"`);
+    }
+    return updated;
 };
 
 /**

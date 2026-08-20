@@ -27,6 +27,8 @@ router.post("/create",
     orderController.createOrder
 );
 
+router.get("/user/:phone", orderController.getUserOrders);
+
 router.get("/:saleId", orderController.getOrder);
 
 router.post("/status", orderController.updateStatus);

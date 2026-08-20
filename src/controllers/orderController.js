@@ -24,7 +24,23 @@ exports.createOrder = async (req, res) => {
             error: err.message
         });
     }
+};
 
+exports.getUserOrders = async (req, res) => {
+    try {
+        const orders = await orderService.getUserOrders(req.params.phone);
+        res.json({
+            success: true,
+            phone: req.params.phone,
+            count: orders.length,
+            orders: orders
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
 };
 
 exports.getOrder = async (req, res) => {
@@ -94,11 +110,17 @@ exports.ristaCallback = async (req, res) => {
         }
 
         const body = req.body;
+        const invoiceNum = body.invoiceNumber || body.invoice;
+        const statusVal = body.status || body.fulfillmentStatus;
 
         console.log(`[rista-callback] Status update received:`);
-        console.log(`  Invoice : ${body.invoiceNumber || body.invoice || "(unknown)"}`);
-        console.log(`  Status  : ${body.status || body.fulfillmentStatus || "(unknown)"}`);
+        console.log(`  Invoice : ${invoiceNum || "(unknown)"}`);
+        console.log(`  Status  : ${statusVal || "(unknown)"}`);
         console.log(`  Raw     : ${JSON.stringify(body).slice(0, 300)}`);
+
+        if (invoiceNum && statusVal) {
+            await orderService.updateOrderStatusByInvoice(invoiceNum, statusVal);
+        }
 
         // Always respond 200 quickly so Rista doesn't retry
         res.sendStatus(200);

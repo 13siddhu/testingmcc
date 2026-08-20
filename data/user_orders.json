@@ -1,0 +1,32 @@
+{
+  "9876543210": [
+    {
+      "id": "2584",
+      "orderNumber": "2584",
+      "status": "Open",
+      "statusText": "Order Received & Brewing",
+      "stage": 1,
+      "location": "Head office",
+      "items": [
+        {
+          "skuCode": "225",
+          "shortName": "Espresso",
+          "longName": "Espresso",
+          "variants": "Regular",
+          "quantity": 1,
+          "unitPrice": 94,
+          "itemNature": "Goods",
+          "itemAmount": 94,
+          "itemTotalAmount": 94,
+          "note": "",
+          "options": [],
+          "discounts": []
+        }
+      ],
+      "totalAmount": 94,
+      "total_price": 94,
+      "date": "2026-08-20T05:22:21.233Z",
+      "url": "https://apps.ristaapps.com/be/order?_o=y&id=6a868f0ddee5c8a1104d4de5&uuid=ffac9f90-952f-4b24-996e-dc74a09c493b&_sign=U5WIb6JQ%2BJj%2BvSn%2F25zaRtNF8Xk99lK1PBUbgvprrzw%3D"
+    }
+  ]
+}
