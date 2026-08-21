@@ -127,29 +127,45 @@ exports.createOrder = async (shopifyOrder) => {
 
 const fs = require("fs");
 const path = require("path");
-const ORDERS_FILE = path.join(__dirname, "../../data/user_orders.json");
+
+// On Vercel / Serverless environments, /var/task is read-only.
+// Use /tmp for writable file storage, seeded from ../../data/user_orders.json
+const SEED_FILE = path.join(__dirname, "../../data/user_orders.json");
+const TMP_FILE = path.join("/tmp", "user_orders.json");
 
 function loadUserOrdersFile() {
+    if (global._userOrdersStore) {
+        return global._userOrdersStore;
+    }
+    let store = {};
     try {
-        if (fs.existsSync(ORDERS_FILE)) {
-            const data = fs.readFileSync(ORDERS_FILE, "utf8");
-            return JSON.parse(data || "{}");
+        if (fs.existsSync(TMP_FILE)) {
+            const data = fs.readFileSync(TMP_FILE, "utf8");
+            store = JSON.parse(data || "{}");
+        } else if (fs.existsSync(SEED_FILE)) {
+            const data = fs.readFileSync(SEED_FILE, "utf8");
+            store = JSON.parse(data || "{}");
         }
     } catch (e) {
-        console.warn("Failed to load user_orders.json:", e.message);
+        console.warn("[orderService] Load error:", e.message);
     }
-    return {};
+    global._userOrdersStore = store;
+    return store;
 }
 
 function saveUserOrdersFile(storeObj) {
+    global._userOrdersStore = storeObj;
     try {
-        const dir = path.dirname(ORDERS_FILE);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(ORDERS_FILE, JSON.stringify(storeObj, null, 2), "utf8");
+        fs.writeFileSync(TMP_FILE, JSON.stringify(storeObj, null, 2), "utf8");
     } catch (e) {
-        console.warn("Failed to save user_orders.json:", e.message);
+        console.warn("[orderService] Failed to save /tmp:", e.message);
+    }
+    try {
+        const dir = path.dirname(SEED_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(SEED_FILE, JSON.stringify(storeObj, null, 2), "utf8");
+    } catch (e) {
+        // Expected on Vercel read-only filesystem
     }
 }
 
