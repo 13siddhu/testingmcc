@@ -25,7 +25,7 @@ exports.mapRistaToFrontend = (customer) => {
 
         customerId: customer.id,
 
-        name: `${customer.firstName} ${customer.lastName}`,
+        name: `${customer.firstName || ''} ${customer.lastName || ''}`.trim(),
 
         email: customer.email,
 
