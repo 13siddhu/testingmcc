@@ -26,13 +26,17 @@ exports.getCustomer = async (req, res) => {
     }
 };
 
-/**
- * Shopify webhook: customers/create
- * Fires when a new customer registers on the storefront.
- * Syncs them into Rista so their customer record exists before any order.
- */
+exports.saveAvatar = async (req, res) => {
+    try {
+        const { phone, avatarBase64 } = req.body;
+        const result = await customerService.saveCustomerAvatar(phone, avatarBase64);
+        res.json({ success: result });
+    } catch(err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+};
+
 exports.webhookCreate = async (req, res) => {
-    // Respond 200 immediately — Shopify retries if we take too long
     res.sendStatus(200);
 
     const shopifyCustomer = req.body;
@@ -46,16 +50,10 @@ exports.webhookCreate = async (req, res) => {
         const result = await customerService.syncCustomer(shopifyCustomer);
         console.log(`[webhook] customers/create — synced to Rista:`, JSON.stringify(result).slice(0, 200));
     } catch (err) {
-        // Log but don't crash — response already sent
         console.error(`[webhook] customers/create — sync failed: ${err.message}`);
     }
 };
 
-/**
- * Shopify webhook: customers/update
- * Fires when a customer updates their profile (name, email, phone).
- * Re-syncs to Rista so the customer record stays current.
- */
 exports.webhookUpdate = async (req, res) => {
     res.sendStatus(200);
 

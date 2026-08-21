@@ -13,14 +13,16 @@ router.get("/", (_req, res) => {
     });
 });
 
-// Get customer by phone number
+// Save customer real photo avatar (Base64)
+router.post("/avatar", customerController.saveAvatar);
+
+// Get customer by phone number (includes avatar Base64 if saved)
 router.get("/:phone", customerController.getCustomer);
 
 // Manual sync — called directly with a JSON body (no HMAC check needed)
 router.post("/sync", customerController.syncCustomer);
 
 // Shopify webhook: customers/create
-// Fires when a customer registers on the Shopify storefront
 router.post(
     "/webhook/create",
     express.raw({ type: "application/json" }),
@@ -29,7 +31,6 @@ router.post(
 );
 
 // Shopify webhook: customers/update
-// Fires when a customer updates their profile (phone, email, name)
 router.post(
     "/webhook/update",
     express.raw({ type: "application/json" }),
