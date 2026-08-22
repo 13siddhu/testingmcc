@@ -45,6 +45,19 @@ app.get("/ping", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// App version & global update config endpoint
+app.get(["/version", "/api/version"], (_req, res) => {
+    res.json({
+        latestVersion: "1.0.1",
+        minRequiredVersion: "1.0.0",
+        forceUpdate: false,
+        updateTitle: "New Version Available! ☕",
+        updateMessage: "We have upgraded My Coffee Co. with dynamic rewards, new payment options, and speed improvements. Update now for the best coffee experience!",
+        apkUrl: "https://github.com/Mycoffeeco/MCCapp/releases/latest/download/app-release.apk",
+        playStoreUrl: "https://play.google.com/store/apps/details?id=com.mycoffeeco.app"
+    });
+});
+
 app.use("/customers",    customerRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/loyalty",      loyaltyRoutes);
