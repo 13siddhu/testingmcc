@@ -3,9 +3,9 @@
     {
       "id": "2584",
       "orderNumber": "2584",
-      "status": "Open",
-      "statusText": "Order Received & Brewing",
-      "stage": 1,
+      "status": "Completed",
+      "statusText": "Order Completed",
+      "stage": 4,
       "location": "Head office",
       "items": [
         {
@@ -33,9 +33,9 @@
     {
       "id": "MCC-18621",
       "orderNumber": "MCC-18621",
-      "status": "Open",
-      "statusText": "Order Received & Brewing",
-      "stage": 1,
+      "status": "Completed",
+      "statusText": "Order Completed",
+      "stage": 4,
       "location": "Head office",
       "items": [
         {
@@ -61,9 +61,9 @@
     {
       "id": "2701",
       "orderNumber": "2701",
-      "status": "Open",
-      "statusText": "Order Received & Brewing",
-      "stage": 1,
+      "status": "Completed",
+      "statusText": "Order Completed",
+      "stage": 4,
       "location": "Head office",
       "items": [
         {
