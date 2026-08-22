@@ -36,6 +36,8 @@ app.use((req, res, next) => {
 });
 
 
+const path = require("path");
+
 app.get("/", (_req, res) => {
     res.send("Middleware Running");
 });
@@ -43,6 +45,14 @@ app.get("/", (_req, res) => {
 // Keep-alive endpoint for cron pings to prevent Render free tier spin-down
 app.get("/ping", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Serve public APK download directory
+app.use("/download", express.static(path.join(__dirname, "../public")));
+
+app.get(["/download/app-release.apk", "/api/download/app-release.apk"], (_req, res) => {
+    const apkPath = path.join(__dirname, "../public/app-release.apk");
+    res.download(apkPath, "app-release.apk");
 });
 
 // App version & global update config endpoint
@@ -53,7 +63,7 @@ app.get(["/version", "/api/version"], (_req, res) => {
         forceUpdate: false,
         updateTitle: "New Version Available! ☕",
         updateMessage: "We have upgraded My Coffee Co. with dynamic rewards, new payment options, and speed improvements. Update now for the best coffee experience!",
-        apkUrl: "https://github.com/Mycoffeeco/MCCapp/releases/latest/download/app-release.apk",
+        apkUrl: "https://testingmcc.vercel.app/download/app-release.apk",
         playStoreUrl: "https://play.google.com/store/apps/details?id=com.mycoffeeco.app"
     });
 });
